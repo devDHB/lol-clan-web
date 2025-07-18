@@ -63,7 +63,7 @@ export default function PartiesPage() {
         try {
             const res = await fetch('/api/parties', { cache: 'no-store' });
             if (!res.ok) throw new Error('Failed to fetch');
-            const data: Party[] = await res.json();
+            const data = await res.json();
             setParties(data);
         } catch (error) {
             console.error("Failed to fetch parties:", error);
@@ -92,7 +92,7 @@ export default function PartiesPage() {
                 setCreateMode(null);
                 fetchParties();
             } else { throw new Error('파티 생성 실패'); }
-        } catch (error) {
+        } catch (_error) {
             alert('파티 생성에 실패했습니다.');
         }
     };
@@ -140,9 +140,7 @@ export default function PartiesPage() {
 
     const handleUpdateParty = async (partyId: string, action: 'update_name' | 'update_positions') => {
         if (!user?.email) return;
-
         const body: { [key: string]: unknown } = { partyId, userEmail: user.email, action };
-
         if (action === 'update_name') {
             if (!newPartyName.trim()) return;
             body.newPartyName = newPartyName;
@@ -150,7 +148,6 @@ export default function PartiesPage() {
             if (editingPositions.length === 0) return;
             body.newPositions = editingPositions;
         }
-
         try {
             const res = await fetch('/api/parties', {
                 method: 'PATCH',

@@ -22,7 +22,8 @@ interface Member {
     positions: string[];
 }
 
-export async function GET(_request: Request) { // 'request' -> '_request'
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function GET(_request: Request) {
     try {
         const sheet = await getSheet();
         const rows = await sheet.getRows();
@@ -133,7 +134,7 @@ export async function PATCH(request: Request) {
 
         if (action === 'update_positions') {
             const { newPositions } = body;
-            let members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
+            const members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
 
             const memberIndex = members.findIndex(m => m.email === userEmail);
             if (memberIndex === -1) {
@@ -147,7 +148,7 @@ export async function PATCH(request: Request) {
 
         } else {
             const { newPartyName } = body;
-            const members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]'); // 'let' -> 'const'
+            const members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
             const leader = members[0];
 
             if (!leader || leader.email !== userEmail) {
