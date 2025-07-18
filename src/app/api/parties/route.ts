@@ -3,7 +3,7 @@ import { JWT } from 'google-auth-library';
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 
-// --- 중복 코드를 하나로 합친 헬퍼 함수 ---
+// --- 헬퍼 함수 ---
 async function getSheet() {
     const serviceAccountAuth = new JWT({
         email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -15,17 +15,16 @@ async function getSheet() {
     await doc.loadInfo();
     return doc.sheetsByTitle['파티'];
 }
-// --- 헬퍼 함수 끝 ---
 
-// Member 객체의 타입을 정의합니다.
+// 타입 정의
 interface Member {
     email: string;
     positions: string[];
 }
 
-export async function GET(request: Request) {
+export async function GET(_request: Request) { // 'request' -> '_request'
     try {
-        const sheet = await getSheet(); // 헬퍼 함수 사용
+        const sheet = await getSheet();
         const rows = await sheet.getRows();
         const parties = rows.map(row => row.toObject());
         return NextResponse.json(parties);
@@ -35,50 +34,37 @@ export async function GET(request: Request) {
     }
 }
 
-
 export async function POST(request: Request) {
     try {
-        // partyType을 추가로 받습니다.
         const { partyName, creatorEmail, partyType } = await request.json();
-
         if (!partyName || !creatorEmail || !partyType) {
             return NextResponse.json({ error: '모든 정보가 필요합니다.' }, { status: 400 });
         }
 
-        const sheet = await getSheet(); // 이전에 만든 헬퍼 함수 사용
+        const sheet = await getSheet();
 
-        // --- 파티 타입에 따라 최대 인원을 설정하는 로직 ---
         let maxMembers;
         switch (partyType) {
-            case '자유랭크':
-                maxMembers = 5;
-                break;
-            case '듀오랭크':
-                maxMembers = 2;
-                break;
-            case '기타':
-                maxMembers = 10;
-                break;
-            default:
-                return NextResponse.json({ error: '알 수 없는 파티 타입입니다.' }, { status: 400 });
+            case '자유랭크': maxMembers = 5; break;
+            case '듀오랭크': maxMembers = 2; break;
+            case '기타': maxMembers = 10; break;
+            default: return NextResponse.json({ error: '알 수 없는 파티 타입입니다.' }, { status: 400 });
         }
-        // --- 로직 끝 ---
 
         const newParty = {
             partyId: uuidv4(),
-            partyType: partyType, // 새로운 열 추가
+            partyType: partyType,
             partyName: partyName,
             membersData: JSON.stringify([{ email: creatorEmail, positions: ['ALL'] }]),
             waitingData: JSON.stringify([]),
             createdAt: new Date().toISOString(),
-            maxMembers: maxMembers, // 새로운 열 추가
+            maxMembers: maxMembers,
         };
 
         await sheet.addRow(newParty);
         return NextResponse.json({ message: '파티가 성공적으로 생성되었습니다.', party: newParty });
-
     } catch (error) {
-        console.error('Create Party API Error:', error);
+        console.error('POST Party API Error:', error);
         return NextResponse.json({ error: '파티 생성에 실패했습니다.' }, { status: 500 });
     }
 }
@@ -88,7 +74,7 @@ export async function PUT(request: Request) {
         const { partyId, userData, action } = await request.json();
         const userEmail = userData.email;
 
-        const sheet = await getSheet(); // 헬퍼 함수 사용
+        const sheet = await getSheet();
         const rows = await sheet.getRows();
         const partyRow = rows.find(row => row.get('partyId') === partyId);
 
@@ -101,7 +87,6 @@ export async function PUT(request: Request) {
         let members: Member[] = membersString ? JSON.parse(membersString) : [];
         let waiting: Member[] = waitingString ? JSON.parse(waitingString) : [];
 
-        // ... (join, leave, waitlist 등의 로직은 그대로) ...
         if (action === 'join') {
             if (members.length >= 5) return NextResponse.json({ error: '파티 정원이 가득 찼습니다.' }, { status: 400 });
             if (!members.some(m => m.email === userEmail)) members.push(userData);
@@ -117,7 +102,6 @@ export async function PUT(request: Request) {
         } else if (action === 'leave_waitlist') {
             waiting = waiting.filter(w => w.email !== userEmail);
         }
-        // ...
 
         if (members.length === 0) {
             await partyRow.delete();
@@ -147,9 +131,7 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ error: '파티를 찾을 수 없습니다.' }, { status: 404 });
         }
 
-        // action 값에 따라 분기 처리
         if (action === 'update_positions') {
-            // --- 포지션 수정 로직 ---
             const { newPositions } = body;
             let members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
 
@@ -164,9 +146,8 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ message: '포지션이 성공적으로 변경되었습니다.' });
 
         } else {
-            // --- 기존의 파티 이름 수정 로직 ---
             const { newPartyName } = body;
-            const members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
+            const members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]'); // 'let' -> 'const'
             const leader = members[0];
 
             if (!leader || leader.email !== userEmail) {
