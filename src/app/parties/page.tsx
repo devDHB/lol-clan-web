@@ -31,7 +31,7 @@ const handlePositionChange = (
     if (position === 'ALL') {
       return prevPositions.includes('ALL') ? [] : ['ALL'];
     }
-    let newPositions = prevPositions.filter(p => p !== 'ALL');
+    const newPositions = prevPositions.filter(p => p !== 'ALL');
     if (newPositions.includes(position)) {
       return newPositions.filter(p => p !== position);
     } else {
@@ -92,7 +92,7 @@ export default function PartiesPage() {
         setCreateMode(null);
         fetchParties();
       } else { throw new Error('파티 생성 실패'); }
-    } catch (error) {
+    } catch (_error) {
       alert('파티 생성에 실패했습니다.');
     }
   };
@@ -129,14 +129,18 @@ export default function PartiesPage() {
         const data = await res.json();
         throw new Error(data.error || '작업에 실패했습니다.');
       }
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert('알 수 없는 오류가 발생했습니다.');
+      }
     }
   };
   
   const handleUpdateParty = async (partyId: string, action: 'update_name' | 'update_positions') => {
       if (!user?.email) return;
-      let body: any = { partyId, userEmail: user.email, action };
+      const body: { [key: string]: unknown } = { partyId, userEmail: user.email, action };
       if (action === 'update_name') {
           if (!newPartyName.trim()) return;
           body.newPartyName = newPartyName;
@@ -157,8 +161,12 @@ export default function PartiesPage() {
           setEditingPartyId(null);
           setEditingMemberEmail(null);
           fetchParties();
-      } catch (error: any) {
+      } catch (error: unknown) {
+        if (error instanceof Error) {
           alert(error.message);
+        } else {
+          alert('알 수 없는 오류가 발생했습니다.');
+        }
       }
   };
 
@@ -203,9 +211,9 @@ export default function PartiesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? <p className="col-span-full text-center">로딩 중...</p> : 
           filteredParties.length > 0 ? (
-            filteredParties.map((party: Party) => {
-              let members: Member[] = []; try { members = party.membersData ? JSON.parse(party.membersData) : []; } catch (e) {}
-              let waiting: Member[] = []; try { waiting = party.waitingData ? JSON.parse(party.waitingData) : []; } catch (e) {}
+            filteredParties.map((party) => {
+              let members: Member[] = []; try { members = party.membersData ? JSON.parse(party.membersData) : []; } catch { /* ignore */ }
+              let waiting: Member[] = []; try { waiting = party.waitingData ? JSON.parse(party.waitingData) : []; } catch { /* ignore */ }
               
               const leader = members.length > 0 ? members[0].email : '알 수 없음';
               const isLeader = user?.email === leader;
@@ -255,7 +263,6 @@ export default function PartiesPage() {
                       </ul>
                     </div>
         
-                    {/* --- 대기 멤버 UI 수정 --- */}
                     <div className="mb-4">
                       <h3 className="font-semibold mb-2">대기 멤버 ({waiting.length} / 5)</h3>
                       <ul className="space-y-2 min-h-[100px]">
@@ -273,7 +280,6 @@ export default function PartiesPage() {
                         )) : <p className="text-sm text-gray-500 p-2">대기 멤버가 없습니다.</p>}
                       </ul>
                     </div>
-                    {/* --- 수정 끝 --- */}
                   </div>
                   
                   <div className="mt-6 space-y-2">
