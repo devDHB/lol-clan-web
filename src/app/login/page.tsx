@@ -1,28 +1,26 @@
-'use client'; // 이 페이지는 사용자 상호작용이 필요하므로 클라이언트 컴포넌트로 지정합니다.
+'use client';
 
 import { useState } from 'react';
-import { auth } from '../../firebase'; // 5단계에서 만든 firebase 설정 파일을 가져옵니다.
+import { auth } from '../../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const router = useRouter();
 
     const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault(); // 폼 제출 시 페이지가 새로고침되는 것을 방지
+        e.preventDefault();
         setError('');
 
         try {
-            // Firebase에 이메일과 비밀번호를 보내 로그인을 시도합니다.
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            alert(`로그인 성공! ${userCredential.user.email}`);
-            // 여기에 로그인 성공 후 메인 페이지로 이동하는 코드를 추가할 수 있습니다.
-            window.location.href = '/';
-        } catch (firebaseError: any) {
-            // 로그인 실패 시 에러 메시지를 표시합니다.
+            await signInWithEmailAndPassword(auth, email, password);
+            router.push('/'); // 로그인 성공 후 메인 페이지로 이동
+        } catch (firebaseError: unknown) {
             setError('이메일 또는 비밀번호가 잘못되었습니다.');
-            console.error("Firebase aath error:", firebaseError);
+            console.error("Firebase auth error:", firebaseError);
         }
     };
 

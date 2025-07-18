@@ -1,14 +1,32 @@
 'use client';
 
 import { useAuth } from '@/components/AuthProvider';
-import { auth } from '@/firebase';
-import { signOut } from 'firebase/auth';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+// 타입 정의
+interface StatRow {
+  [key: string]: string | number;
+}
+
+interface PlayerRank {
+  닉네임: string;
+  value: number;
+}
+
+interface Rankings {
+  꾸준왕: PlayerRank[];
+  다승: PlayerRank[];
+  승률: PlayerRank[];
+  TOP: PlayerRank[];
+  JG: PlayerRank[];
+  MID: PlayerRank[];
+  AD: PlayerRank[];
+  SUP: PlayerRank[];
+}
+
 // 랭킹 카드를 만드는 컴포넌트
-function RankingCard({ title, emoji, players, unit = '승' }: any) {
-  // players가 배열이 아니거나 비어있으면 렌더링하지 않음
+function RankingCard({ title, emoji, players, unit = '승' }: { title: string; emoji: string; players: PlayerRank[]; unit?: string; }) {
   if (!Array.isArray(players) || players.length === 0) {
     return (
       <div className="bg-gray-800 p-4 rounded-lg">
@@ -21,7 +39,7 @@ function RankingCard({ title, emoji, players, unit = '승' }: any) {
     <div className="bg-gray-800 p-4 rounded-lg">
       <h2 className="text-lg font-bold mb-2 text-center">{emoji} {title}</h2>
       <ol className="list-decimal list-inside">
-        {players.map((player: any, index: number) => (
+        {players.map((player, index) => (
           <li key={index} className="truncate">
             {player.닉네임} - {unit === '%' ? `${(player.value * 100).toFixed(1)}%` : `${player.value}${unit}`}
           </li>
@@ -34,22 +52,20 @@ function RankingCard({ title, emoji, players, unit = '승' }: any) {
 // 메인 페이지
 export default function HomePage() {
   const { user } = useAuth();
-  const [stats, setStats] = useState([]);
-  const [rankings, setRankings] = useState<any>(null);
+  const [stats, setStats] = useState<StatRow[]>([]);
+  const [rankings, setRankings] = useState<Rankings | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 사용자가 로그인한 경우에만 데이터를 가져옵니다.
     if (user) {
       const fetchData = async () => {
         try {
-          // stats와 rankings API를 동시에 호출
           const [statsRes, rankingsRes] = await Promise.all([
             fetch('/api/stats'),
             fetch('/api/rankings')
           ]);
-          const statsData = await statsRes.json();
-          const rankingsData = await rankingsRes.json();
+          const statsData: StatRow[] = await statsRes.json();
+          const rankingsData: Rankings = await rankingsRes.json();
           setStats(statsData);
           setRankings(rankingsData);
         } catch (error) {
@@ -59,15 +75,11 @@ export default function HomePage() {
         }
       };
       fetchData();
+    } else {
+      setLoading(false);
     }
-  }, [user]); // user 상태가 변경될 때마다 실행
+  }, [user]);
 
-  const handleLogout = async () => {
-    await signOut(auth);
-    // 로그아웃 후 로그인 페이지로 이동하거나, 현재 페이지에 머물러도 AuthProvider가 상태를 업데이트합니다.
-  };
-
-  // 1. 로그인하지 않은 경우
   if (!user) {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
@@ -80,7 +92,6 @@ export default function HomePage() {
     );
   }
 
-  // 2. 로그인했지만 데이터를 로딩 중인 경우
   if (loading) {
     return (
       <main className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
@@ -89,17 +100,11 @@ export default function HomePage() {
     )
   }
 
-  // 3. 로그인도 했고 데이터 로딩도 완료된 경우
   return (
     <main className="container mx-auto p-4 bg-gray-900 text-white min-h-screen">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">
-          환영합니다, {user.email}님!
-        </h1>
-        <button onClick={handleLogout} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-md">
-          로그아웃
-        </button>
-      </div>
+      <h1 className="text-4xl font-bold mb-6 text-center text-blue-400">
+        🏆 내전 전적 통계 🏆
+      </h1>
 
       {rankings && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
@@ -124,11 +129,11 @@ export default function HomePage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-600">
-            {stats.map((player: any, index: number) => (
+            {stats.map((player, index) => (
               <tr key={index} className="hover:bg-gray-700">
-                {Object.values(player).map((value: any, i) => (
+                {Object.values(player).map((value, i) => (
                   <td key={i} className="p-3 text-sm text-gray-300 whitespace-nowrap">
-                    {i === 4 ? `${(Number(value) * 100).toFixed(1)}%` : value}
+                    {i === 4 ? `${(Number(value) * 100).toFixed(1)}%` : String(value)}
                   </td>
                 ))}
               </tr>

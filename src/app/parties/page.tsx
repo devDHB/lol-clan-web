@@ -31,7 +31,7 @@ const handlePositionChange = (
         if (position === 'ALL') {
             return prevPositions.includes('ALL') ? [] : ['ALL'];
         }
-        let newPositions = prevPositions.filter(p => p !== 'ALL');
+        const newPositions = prevPositions.filter(p => p !== 'ALL');
         if (newPositions.includes(position)) {
             return newPositions.filter(p => p !== position);
         } else {
@@ -63,7 +63,7 @@ export default function PartiesPage() {
         try {
             const res = await fetch('/api/parties', { cache: 'no-store' });
             if (!res.ok) throw new Error('Failed to fetch');
-            const data = await res.json();
+            const data: Party[] = await res.json();
             setParties(data);
         } catch (error) {
             console.error("Failed to fetch parties:", error);
@@ -104,7 +104,6 @@ export default function PartiesPage() {
         }
 
         const party = parties.find(p => p.partyId === partyId);
-        // --- '기타' 게임은 포지션 선택 검사 안 함 ---
         if ((action === 'join' || action === 'join_waitlist') && party?.partyType !== '기타' && selectedPositions.length === 0) {
             alert('하나 이상의 포지션을 선택해주세요.');
             return;
@@ -116,7 +115,6 @@ export default function PartiesPage() {
             }
         }
         try {
-            // --- '기타' 게임은 빈 포지션 배열 전송 ---
             const positionsToSend = party?.partyType !== '기타' ? selectedPositions : [];
             const userData = { email: user.email, positions: positionsToSend };
             const res = await fetch('/api/parties', {
@@ -131,14 +129,20 @@ export default function PartiesPage() {
                 const data = await res.json();
                 throw new Error(data.error || '작업에 실패했습니다.');
             }
-        } catch (error: any) {
-            alert(error.message);
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                alert(error.message);
+            } else {
+                alert('알 수 없는 오류가 발생했습니다.');
+            }
         }
     };
 
     const handleUpdateParty = async (partyId: string, action: 'update_name' | 'update_positions') => {
         if (!user?.email) return;
-        let body: any = { partyId, userEmail: user.email, action };
+
+        const body: { [key: string]: unknown } = { partyId, userEmail: user.email, action };
+
         if (action === 'update_name') {
             if (!newPartyName.trim()) return;
             body.newPartyName = newPartyName;
@@ -146,6 +150,7 @@ export default function PartiesPage() {
             if (editingPositions.length === 0) return;
             body.newPositions = editingPositions;
         }
+
         try {
             const res = await fetch('/api/parties', {
                 method: 'PATCH',
@@ -159,8 +164,12 @@ export default function PartiesPage() {
             setEditingPartyId(null);
             setEditingMemberEmail(null);
             fetchParties();
-        } catch (error: any) {
-            alert(error.message);
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                alert(error.message);
+            } else {
+                alert('알 수 없는 오류가 발생했습니다.');
+            }
         }
     };
 
@@ -205,16 +214,16 @@ export default function PartiesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {loading ? <p className="col-span-full text-center">로딩 중...</p> :
                     filteredParties.length > 0 ? (
-                        filteredParties.map((party: Party) => {
-                            let members: Member[] = []; try { members = party.membersData ? JSON.parse(party.membersData) : []; } catch (e) { }
-                            let waiting: Member[] = []; try { waiting = party.waitingData ? JSON.parse(party.waitingData) : []; } catch (e) { }
+                        filteredParties.map((party) => {
+                            let members: Member[] = []; try { members = party.membersData ? JSON.parse(party.membersData) : []; } catch { /* ignore */ }
+                            let waiting: Member[] = []; try { waiting = party.waitingData ? JSON.parse(party.waitingData) : []; } catch { /* ignore */ }
 
                             const leader = members.length > 0 ? members[0].email : '알 수 없음';
                             const isLeader = user?.email === leader;
                             const isMember = user?.email ? members.some(m => m.email === user.email) : false;
                             const isInWaitlist = user?.email ? waiting.some(w => w.email === user.email) : false;
                             const isFull = members.length >= Number(party.maxMembers);
-                            const showPositions = party.partyType !== '기타'; // --- 포지션 표시 여부 변수 ---
+                            const showPositions = party.partyType !== '기타';
 
                             return (
                                 <div key={party.partyId} className="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col justify-between">
@@ -247,8 +256,7 @@ export default function PartiesPage() {
                                                                 <span>{member.email}</span>
                                                                 {showPositions && (
                                                                     <div className="flex items-center gap-1">
-                                                                        {member.positions.map(pos => (<span key={pos} className="bg-blue-500 px-2 py-0.5 text-xs rounded-full">{pos}</span>))}
-                                                                        {user?.email === member.email && (<button onClick={() => { setEditingMemberEmail(member.email); setEditingPositions(member.positions); }} className="bg-gray-600 text-xs px-2 py-1 rounded ml-1">수정</button>)}
+                                                                        {member.positions.map(pos => (<span key={pos} className="bg-blue-500 px-2 py-0.5 text-xs rounded-full">{pos}</span>))}{user?.email === member.email && (<button onClick={() => { setEditingMemberEmail(member.email); setEditingPositions(member.positions); }} className="bg-gray-600 text-xs px-2 py-1 rounded ml-1">수정</button>)}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -267,12 +275,14 @@ export default function PartiesPage() {
                                     </div>
 
                                     <div className="mt-6 space-y-2">
-                                        {!isMember && !isInWaitlist && !isFull && showPositions &&
+                                        {!isMember && !isInWaitlist && !isFull &&
                                             <div>
-                                                <p className="text-sm text-center mb-2">참가하려면 포지션을 선택하세요</p>
-                                                <div className="flex flex-wrap gap-2 justify-center mb-2">
-                                                    {POSITIONS.map(pos => { const isSelected = selectedPositions.includes(pos); const isDisabled = selectedPositions.includes('ALL') && pos !== 'ALL'; return (<button key={pos} onClick={() => handlePositionChange(pos, setSelectedPositions)} disabled={isDisabled} className={`px-3 py-1 text-sm rounded-full ${isSelected ? 'bg-green-500' : 'bg-gray-600'} ${isDisabled ? 'opacity-50' : ''}`}>{pos}</button>); })}
-                                                </div>
+                                                {showPositions && <p className="text-sm text-center mb-2">참가하려면 포지션을 선택하세요</p>}
+                                                {showPositions &&
+                                                    <div className="flex flex-wrap gap-2 justify-center mb-2">
+                                                        {POSITIONS.map(pos => { const isSelected = selectedPositions.includes(pos); const isDisabled = selectedPositions.includes('ALL') && pos !== 'ALL'; return (<button key={pos} onClick={() => handlePositionChange(pos, setSelectedPositions)} disabled={isDisabled} className={`px-3 py-1 text-sm rounded-full ${isSelected ? 'bg-green-500' : 'bg-gray-600'} ${isDisabled ? 'opacity-50' : ''}`}>{pos}</button>); })}
+                                                    </div>
+                                                }
                                             </div>
                                         }
                                         {user && (
