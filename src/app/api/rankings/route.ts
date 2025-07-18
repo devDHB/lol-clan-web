@@ -2,7 +2,12 @@ import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
 import { NextResponse } from 'next/server';
 
-export async function GET(request: Request) {
+// 타입 정의
+interface StatRow {
+    [key: string]: string | number;
+}
+
+export async function GET(_request: Request) { // 'request' -> '_request'
     try {
         const serviceAccountAuth = new JWT({
             email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -17,18 +22,18 @@ export async function GET(request: Request) {
         const stats = rows.map(row => row.toObject());
 
         // 랭킹 계산 로직
-        const getTop3 = (data: any[], key: string, gameKey?: string, minGames = 0) => {
-            return [...data] // 원본 배열 복사
-                .filter(p => gameKey ? p[gameKey] >= minGames : true)
-                .sort((a, b) => b[key] - a[key])
+        const getTop3 = (data: StatRow[], key: string, gameKey?: string, minGames = 0) => { // 'any[]' -> 'StatRow[]'
+            return [...data]
+                .filter(p => gameKey ? Number(p[gameKey]) >= minGames : true)
+                .sort((a, b) => Number(b[key]) - Number(a[key]))
                 .slice(0, 3)
-                .map(p => ({ 닉네임: p['닉네임'], value: p[key] }));
+                .map(p => ({ 닉네임: String(p['닉네임']), value: Number(p[key]) }));
         };
 
         const rankings = {
             꾸준왕: getTop3(stats, '총 경기'),
             다승: getTop3(stats, '총 승'),
-            승률: getTop3(stats, '승률', '총 경기', 5), // 최소 5경기 이상
+            승률: getTop3(stats, '승률', '총 경기', 5),
             TOP: getTop3(stats, 'TOP 승'),
             JG: getTop3(stats, 'JG 승'),
             MID: getTop3(stats, 'MID 승'),
