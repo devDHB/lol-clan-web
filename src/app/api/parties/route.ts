@@ -134,7 +134,7 @@ export async function PATCH(request: Request) {
 
     if (action === 'update_positions') {
       const { newPositions } = body;
-      let members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
+      const members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
       
       const memberIndex = members.findIndex(m => m.email === userEmail);
       if (memberIndex === -1) {
