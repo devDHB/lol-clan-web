@@ -1,34 +1,60 @@
-import { GoogleSpreadsheet } from 'google-spreadsheet';
-import { JWT } from 'google-auth-library';
 import { NextResponse } from 'next/server';
+import { db } from '@/lib/firebase-admin';
 
 // 타입 정의
+interface PositionStats { wins: number; losses: number; }
+interface UserData {
+  nickname: string;
+  positionStats?: { [key: string]: PositionStats };
+}
 interface StatRow {
-  [key: string]: string | number;
+  '닉네임': string;
+  '총 경기': number;
+  '총 승': number;
+  '승률': number;
+  'TOP 승': number;
+  'JG 승': number;
+  'MID 승': number;
+  'AD 승': number;
+  'SUP 승': number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(_request: Request) {
   try {
-    const serviceAccountAuth = new JWT({
-      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      key: (process.env.GOOGLE_PRIVATE_KEY as string).replace(/\\n/g, '\n'),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    const usersSnapshot = await db.collection('users').get();
+    if (usersSnapshot.empty) {
+      const emptyRankings = { 꾸준왕: [], 다승: [], 승률: [], TOP: [], JG: [], MID: [], AD: [], SUP: [] };
+      return NextResponse.json(emptyRankings);
+    }
+
+    const stats: StatRow[] = usersSnapshot.docs.map(doc => {
+        const user = doc.data() as UserData;
+        const posStats = user.positionStats || {};
+        const totalWins = Object.values(posStats).reduce((sum, pos) => sum + pos.wins, 0);
+        const totalLosses = Object.values(posStats).reduce((sum, pos) => sum + pos.losses, 0);
+        const totalGames = totalWins + totalLosses;
+        const winRate = totalGames > 0 ? totalWins / totalGames : 0;
+        return {
+            '닉네임': user.nickname || doc.id,
+            '총 경기': totalGames,
+            '총 승': totalWins,
+            '승률': winRate,
+            'TOP 승': posStats['TOP']?.wins || 0,
+            'JG 승': posStats['JG']?.wins || 0,
+            'MID 승': posStats['MID']?.wins || 0,
+            'AD 승': posStats['AD']?.wins || 0,
+            'SUP 승': posStats['SUP']?.wins || 0,
+        };
     });
 
-    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID as string, serviceAccountAuth);
-    await doc.loadInfo(); 
-    const sheet = doc.sheetsByTitle['전적통계']; 
-    const rows = await sheet.getRows();
-    const stats = rows.map(row => row.toObject());
-
-    // 랭킹 계산 로직
-    const getTop3 = (data: StatRow[], key: string, gameKey?: string, minGames = 0) => {
+    const getTop3 = (data: StatRow[], key: keyof StatRow, gameKey?: keyof StatRow, minGames = 0) => {
       return [...data]
+        // --- 오류 수정: Number()로 타입을 명확하게 변환 ---
         .filter(p => gameKey ? Number(p[gameKey]) >= minGames : true)
-        .sort((a, b) => Number(b[key]) - Number(a[key]))
+        .sort((a, b) => (b[key] as number) - (a[key] as number))
         .slice(0, 3)
-        .map(p => ({ 닉네임: String(p['닉네임']), value: Number(p[key]) }));
+        .map(p => ({ 닉네임: p['닉네임'], value: p[key] as number }));
     };
     
     const rankings = {

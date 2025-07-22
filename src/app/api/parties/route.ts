@@ -1,20 +1,6 @@
-import { GoogleSpreadsheet } from 'google-spreadsheet';
-import { JWT } from 'google-auth-library';
 import { NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
-
-// --- 헬퍼 함수 ---
-async function getSheet() {
-  const serviceAccountAuth = new JWT({
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    key: (process.env.GOOGLE_PRIVATE_KEY as string).replace(/\\n/g, '\n'),
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
-
-  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID as string, serviceAccountAuth);
-  await doc.loadInfo();
-  return doc.sheetsByTitle['파티'];
-}
+import { db } from '@/lib/firebase-admin';
+import admin from 'firebase-admin';
 
 // 타입 정의
 interface Member {
@@ -22,28 +8,44 @@ interface Member {
   positions: string[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function GET(_request: Request) {
+// GET: 모든 파티 목록을 가져오는 함수
+export async function GET() {
   try {
-    const sheet = await getSheet();
-    const rows = await sheet.getRows();
-    const parties = rows.map(row => row.toObject());
+    const partiesCollection = db.collection('parties');
+    const snapshot = await partiesCollection.orderBy('createdAt', 'desc').get();
+
+    if (snapshot.empty) {
+      return NextResponse.json([]);
+    }
+
+    const parties: unknown[] = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      // Firestore 타임스탬프를 ISO 문자열로 변환
+      const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
+      parties.push({
+        partyId: doc.id,
+        ...data,
+        createdAt,
+      });
+    });
+
     return NextResponse.json(parties);
+
   } catch (error) {
     console.error('GET Parties API Error:', error);
     return NextResponse.json({ error: '파티 목록을 가져오는 데 실패했습니다.' }, { status: 500 });
   }
 }
 
+// POST: 새로운 파티를 만드는 함수
 export async function POST(request: Request) {
   try {
     const { partyName, creatorEmail, partyType } = await request.json();
     if (!partyName || !creatorEmail || !partyType) {
       return NextResponse.json({ error: '모든 정보가 필요합니다.' }, { status: 400 });
     }
-    
-    const sheet = await getSheet();
-    
+
     let maxMembers;
     switch (partyType) {
       case '자유랭크': maxMembers = 5; break;
@@ -51,49 +53,70 @@ export async function POST(request: Request) {
       case '기타': maxMembers = 10; break;
       default: return NextResponse.json({ error: '알 수 없는 파티 타입입니다.' }, { status: 400 });
     }
-    
+
     const newParty = {
-      partyId: uuidv4(),
-      partyType: partyType,
-      partyName: partyName,
-      membersData: JSON.stringify([{ email: creatorEmail, positions: ['ALL'] }]),
-      waitingData: JSON.stringify([]),
-      createdAt: new Date().toISOString(),
-      maxMembers: maxMembers,
+      partyType,
+      partyName,
+      maxMembers,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      membersData: [{ email: creatorEmail, positions: ['ALL'] }],
+      waitingData: [],
     };
-    
-    await sheet.addRow(newParty);
-    return NextResponse.json({ message: '파티가 성공적으로 생성되었습니다.', party: newParty });
+
+    const docRef = await db.collection('parties').add(newParty);
+
+    return NextResponse.json({ message: '파티가 성공적으로 생성되었습니다.', partyId: docRef.id });
+
   } catch (error) {
     console.error('POST Party API Error:', error);
     return NextResponse.json({ error: '파티 생성에 실패했습니다.' }, { status: 500 });
   }
 }
 
+// 안전한 데이터 파싱을 위한 헬퍼 함수
+const safeParse = (data: unknown): Member[] => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+};
+
+// PUT: 파티 참가/나가기/대기열을 처리하는 함수
 export async function PUT(request: Request) {
   try {
     const { partyId, userData, action } = await request.json();
     const userEmail = userData.email;
     
-    const sheet = await getSheet();
-    const rows = await sheet.getRows();
-    const partyRow = rows.find(row => row.get('partyId') === partyId);
+    const partyRef = db.collection('parties').doc(partyId);
+    const doc = await partyRef.get();
 
-    if (!partyRow) {
+    if (!doc.exists) {
       return NextResponse.json({ error: '파티를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    const membersString = partyRow.get('membersData') as string;
-    const waitingString = partyRow.get('waitingData') as string;
-    let members: Member[] = membersString ? JSON.parse(membersString) : [];
-    let waiting: Member[] = waitingString ? JSON.parse(waitingString) : [];
+    const partyData = doc.data();
+    
+    // --- 버그 수정: 안전한 파싱 함수 사용 ---
+    let members: Member[] = safeParse(partyData?.membersData);
+    let waiting: Member[] = safeParse(partyData?.waitingData);
+    
+    const maxMembers = Number(partyData?.maxMembers) || 5;
     
     if (action === 'join') {
-      if (members.length >= 5) return NextResponse.json({ error: '파티 정원이 가득 찼습니다.' }, { status: 400 });
+      if (members.length >= maxMembers) {
+        return NextResponse.json({ error: '파티 정원이 가득 찼습니다.' }, { status: 400 });
+      }
       if (!members.some(m => m.email === userEmail)) members.push(userData);
     } else if (action === 'leave') {
       members = members.filter(m => m.email !== userEmail);
-      if (members.length < 5 && waiting.length > 0) {
+      if (members.length < maxMembers && waiting.length > 0) {
         const newMember = waiting.shift();
         if (newMember) members.push(newMember);
       }
@@ -105,12 +128,13 @@ export async function PUT(request: Request) {
     }
 
     if (members.length === 0) {
-      await partyRow.delete();
+      await partyRef.delete();
       return NextResponse.json({ message: '파티가 비어서 자동으로 삭제되었습니다.' });
     } else {
-      partyRow.set('membersData', JSON.stringify(members));
-      partyRow.set('waitingData', JSON.stringify(waiting));
-      await partyRow.save();
+      await partyRef.update({
+        membersData: members,
+        waitingData: waiting
+      });
       return NextResponse.json({ message: '파티 정보가 업데이트되었습니다.' });
     }
   } catch (error) {
@@ -119,45 +143,42 @@ export async function PUT(request: Request) {
   }
 }
 
+// PATCH: 파티 이름 또는 멤버 포지션을 수정하는 함수
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
     const { partyId, userEmail, action } = body;
 
-    const sheet = await getSheet();
-    const rows = await sheet.getRows();
-    const partyRow = rows.find(row => row.get('partyId') === partyId);
+    const partyRef = db.collection('parties').doc(partyId);
+    const doc = await partyRef.get();
 
-    if (!partyRow) {
+    if (!doc.exists) {
       return NextResponse.json({ error: '파티를 찾을 수 없습니다.' }, { status: 404 });
     }
+    
+    const partyData = doc.data();
+    const members: Member[] = safeParse(partyData?.membersData);
 
     if (action === 'update_positions') {
       const { newPositions } = body;
-      const members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
-      
       const memberIndex = members.findIndex(m => m.email === userEmail);
       if (memberIndex === -1) {
         return NextResponse.json({ error: '파티 멤버가 아닙니다.' }, { status: 403 });
       }
-
       members[memberIndex].positions = newPositions;
-      partyRow.set('membersData', JSON.stringify(members));
-      await partyRow.save();
+      await partyRef.update({ membersData: members });
       return NextResponse.json({ message: '포지션이 성공적으로 변경되었습니다.' });
 
-    } else {
+    } else if (action === 'update_name') {
       const { newPartyName } = body;
-      const members: Member[] = JSON.parse(partyRow.get('membersData') as string || '[]');
       const leader = members[0];
-
       if (!leader || leader.email !== userEmail) {
         return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 });
       }
-      
-      partyRow.set('partyName', newPartyName);
-      await partyRow.save();
+      await partyRef.update({ partyName: newPartyName });
       return NextResponse.json({ message: '파티 이름이 성공적으로 변경되었습니다.' });
+    } else {
+      return NextResponse.json({ error: '알 수 없는 요청입니다.' }, { status: 400 });
     }
 
   } catch (error) {

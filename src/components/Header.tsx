@@ -34,7 +34,9 @@ export default function Header() {
             <div className="container mx-auto flex justify-between items-center">
                 <div className="flex items-center gap-4">
                     <Link href="/" className="text-lg font-bold hover:text-blue-400">홈</Link>
+                    <Link href="/notices" className="text-lg font-bold hover:text-blue-400">공지사항</Link>
                     <Link href="/parties" className="text-lg font-bold hover:text-blue-400">파티찾기</Link>
+                    <Link href="/profile" className="text-lg font-bold hover:text-blue-400">내 프로필</Link>
                 </div>
                 <div className="flex items-center gap-4">
                     <span>{user.email}</span>

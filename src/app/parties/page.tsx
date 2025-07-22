@@ -13,8 +13,8 @@ interface Party {
   partyId: string;
   partyType: string;
   partyName: string;
-  membersData: string;
-  waitingData: string;
+  membersData: string | Member[]; // 문자열 또는 배열일 수 있음
+  waitingData: string | Member[]; // 문자열 또는 배열일 수 있음
   createdAt: string;
   maxMembers: string;
 }
@@ -45,6 +45,21 @@ const partyTypeColors: { [key: string]: string } = {
   '자유랭크': 'bg-blue-600',
   '듀오랭크': 'bg-purple-600',
   '기타': 'bg-teal-600',
+};
+
+// --- 버그 수정: 안전한 데이터 파싱을 위한 클라이언트용 헬퍼 함수 ---
+const safeParseClient = (data: unknown): Member[] => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data; // 이미 배열이면 그대로 반환
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data); // 문자열이면 파싱 시도
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return []; // 파싱 실패 시 빈 배열 반환
+    }
+  }
+  return [];
 };
 
 export default function PartiesPage() {
@@ -109,7 +124,7 @@ export default function PartiesPage() {
       return;
     }
     if (action === 'leave') {
-      const members: Member[] = party?.membersData ? JSON.parse(party.membersData) : [];
+      const members: Member[] = party?.membersData ? safeParseClient(party.membersData) : [];
       if (members.length > 0 && members[0].email === user.email) {
         if (!confirm('파티장입니다. 정말로 파티를 나가시겠습니까? 다음 멤버에게 파티장이 위임됩니다.')) return;
       }
@@ -212,8 +227,8 @@ export default function PartiesPage() {
         {loading ? <p className="col-span-full text-center">로딩 중...</p> : 
           filteredParties.length > 0 ? (
             filteredParties.map((party) => {
-              let members: Member[] = []; try { members = party.membersData ? JSON.parse(party.membersData) : []; } catch { /* ignore */ }
-              let waiting: Member[] = []; try { waiting = party.waitingData ? JSON.parse(party.waitingData) : []; } catch { /* ignore */ }
+              const members: Member[] = safeParseClient(party.membersData);
+              const waiting: Member[] = safeParseClient(party.waitingData);
               
               const leader = members.length > 0 ? members[0].email : '알 수 없음';
               const isLeader = user?.email === leader;

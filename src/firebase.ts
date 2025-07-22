@@ -13,6 +13,7 @@ const firebaseConfig = {
 
 // Firebase 앱 초기화
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 // Firebase 인증 객체 내보내기
-export const auth = getAuth(app);
+export { app, auth };
