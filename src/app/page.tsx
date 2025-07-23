@@ -19,6 +19,8 @@ interface Party {
   partyType: string;
   membersData: string | Member[];
   maxMembers: string;
+  requiredTier?: string; // 파티에 필요한 최소 티어
+  startTime?: string | null; // 파티 시작 시간 (텍스트)
 }
 interface Scrim {
   scrimId: string;
@@ -182,10 +184,16 @@ export default function HomePage() {
                 const leaderNickname = userMap[leaderEmail] || leaderEmail.split('@')[0];
                 const typeStyle = partyTypeColors[party.partyType] || 'bg-gray-600 text-white';
 
-                // 🔥 현재 인원 수
-                const currentCount = members.length;
-                // 🔥 최대 인원 수 (string으로 들어오면 숫자로 변환)
-                const maxCount = Number(party.maxMembers) || 0;
+                // 파티 정보 문자열 조합
+                const displayTier = party.requiredTier && party.requiredTier.trim() !== '' ? party.requiredTier.trim() : '티어 제한 없음';
+                const displayTime = party.startTime && party.startTime.trim() !== '' ? party.startTime.trim() : '즉시 시작';
+
+                let partyInfoString = party.partyName;
+                if (party.partyType === '자유랭크' || party.partyType === '듀오랭크') {
+                    partyInfoString += ` / ${displayTier}`;
+                }
+                partyInfoString += ` / ${displayTime} - ${leaderNickname}`;
+
 
                 return (
                   <li key={party.partyId} className="truncate hover:text-blue-400 transition-colors">
@@ -193,9 +201,9 @@ export default function HomePage() {
                       <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${typeStyle}`}>
                         {party.partyType.replace('랭크', '').replace('게임', '')}
                       </span>
-                      {/* 🔥 제목 옆에 (현재/최대) 표시 */}
+                      {/* 변경된 파티 정보 표시 */}
                       <span>
-                        {`${party.partyName}(${currentCount}/${maxCount}) - ${leaderNickname} `}
+                        {partyInfoString}
                       </span>
                     </Link>
                   </li>
