@@ -8,6 +8,21 @@ interface Member {
   positions: string[];
 }
 
+// 안전한 데이터 파싱을 위한 헬퍼 함수
+const safeParse = (data: unknown): Member[] => {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+};
+
 // GET: 모든 파티 목록을 가져오는 함수
 export async function GET() {
   try {
@@ -21,7 +36,6 @@ export async function GET() {
     const parties: unknown[] = [];
     snapshot.forEach(doc => {
       const data = doc.data();
-      // Firestore 타임스탬프를 ISO 문자열로 변환
       const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
       parties.push({
         partyId: doc.id,
@@ -73,27 +87,12 @@ export async function POST(request: Request) {
   }
 }
 
-// 안전한 데이터 파싱을 위한 헬퍼 함수
-const safeParse = (data: unknown): Member[] => {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (typeof data === 'string') {
-    try {
-      const parsed = JSON.parse(data);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return [];
-    }
-  }
-  return [];
-};
-
 // PUT: 파티 참가/나가기/대기열을 처리하는 함수
 export async function PUT(request: Request) {
   try {
     const { partyId, userData, action } = await request.json();
     const userEmail = userData.email;
-    
+
     const partyRef = db.collection('parties').doc(partyId);
     const doc = await partyRef.get();
 
@@ -102,13 +101,12 @@ export async function PUT(request: Request) {
     }
 
     const partyData = doc.data();
-    
-    // --- 버그 수정: 안전한 파싱 함수 사용 ---
+
     let members: Member[] = safeParse(partyData?.membersData);
     let waiting: Member[] = safeParse(partyData?.waitingData);
-    
+
     const maxMembers = Number(partyData?.maxMembers) || 5;
-    
+
     if (action === 'join') {
       if (members.length >= maxMembers) {
         return NextResponse.json({ error: '파티 정원이 가득 찼습니다.' }, { status: 400 });
@@ -155,7 +153,7 @@ export async function PATCH(request: Request) {
     if (!doc.exists) {
       return NextResponse.json({ error: '파티를 찾을 수 없습니다.' }, { status: 404 });
     }
-    
+
     const partyData = doc.data();
     const members: Member[] = safeParse(partyData?.membersData);
 
@@ -184,5 +182,54 @@ export async function PATCH(request: Request) {
   } catch (error) {
     console.error('PATCH Party API Error:', error);
     return NextResponse.json({ error: '업데이트에 실패했습니다.' }, { status: 500 });
+  }
+}
+
+// DELETE: 파티를 삭제하는 함수
+export async function DELETE(request: Request) {
+  try {
+    const { partyId, requesterEmail } = await request.json();
+
+    if (!partyId || !requesterEmail) {
+      return NextResponse.json({ error: '파티 ID와 요청자 정보가 필요합니다.' }, { status: 400 });
+    }
+
+    // 1. 요청자의 권한 확인
+    const usersCollection = db.collection('users');
+    const userSnapshot = await usersCollection.where('email', '==', requesterEmail).limit(1).get();
+
+    if (userSnapshot.empty) {
+      return NextResponse.json({ error: '사용자 정보를 찾을 수 없습니다.' }, { status: 404 });
+    }
+    const userRole = userSnapshot.docs[0].data().role;
+
+    // 2. 파티 정보 확인
+    const partyRef = db.collection('parties').doc(partyId);
+    const partyDoc = await partyRef.get();
+    if (!partyDoc.exists) {
+      return NextResponse.json({ error: '파티를 찾을 수 없습니다.' }, { status: 404 });
+    }
+    const partyData = partyDoc.data();
+    const members: Member[] = safeParse(partyData?.membersData);
+    const leaderEmail = members.length > 0 ? members[0].email : null;
+
+    // 3. 권한 검증: 총관리자, 관리자, 또는 파티장
+    const hasPermission =
+      userRole === '총관리자' ||
+      userRole === '관리자' ||
+      requesterEmail === leaderEmail;
+
+    if (!hasPermission) {
+      return NextResponse.json({ error: '파티를 해체할 권한이 없습니다.' }, { status: 403 });
+    }
+
+    // 4. 파티 삭제
+    await partyRef.delete();
+
+    return NextResponse.json({ message: '파티가 성공적으로 해체되었습니다.' });
+
+  } catch (error) {
+    console.error('DELETE Party API Error:', error);
+    return NextResponse.json({ error: '파티 해체에 실패했습니다.' }, { status: 500 });
   }
 }

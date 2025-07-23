@@ -3,51 +3,74 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
+import { useRouter } from 'next/navigation';
 
+// 타입 정의
 interface Notice {
   noticeId: string;
   title: string;
+  content: string;
   authorEmail: string;
+  authorNickname: string;
   createdAt: string;
+  imageUrls?: string[];
 }
-
 interface UserProfile {
   role: string;
 }
 
 export default function NoticesPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (user) {
-        try {
-          // 공지사항 목록과 사용자 프로필 정보를 동시에 가져옵니다.
-          const [noticesRes, profileRes] = await Promise.all([
-            fetch('/api/notices'),
-            fetch(`/api/users/${user.email}`)
-          ]);
-          
-          const noticesData = await noticesRes.json();
-          const profileData = await profileRes.json();
-
-          setNotices(noticesData);
-          setProfile(profileData);
-
-        } catch (error) {
-          console.error('Failed to fetch data:', error);
-        } finally {
-          setLoading(false);
-        }
-      } else {
+  const fetchData = async () => {
+    if (user) {
+      try {
+        const [noticesRes, profileRes] = await Promise.all([
+          fetch('/api/notices'),
+          fetch(`/api/users/${user.email}`)
+        ]);
+        const noticesData = await noticesRes.json();
+        const profileData = await profileRes.json();
+        setNotices(noticesData);
+        setProfile(profileData);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
         setLoading(false);
       }
-    };
+    } else {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  const handleDelete = async (noticeId: string) => {
+    if (!user || !confirm('정말로 이 공지사항을 삭제하시겠습니까?')) return;
+
+    try {
+      const res = await fetch(`/api/notices/${noticeId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userEmail: user.email }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '삭제 실패');
+      }
+      alert('공지사항이 삭제되었습니다.');
+      fetchData();
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
 
   if (!user) {
     return (
@@ -68,7 +91,6 @@ export default function NoticesPage() {
     <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-4xl font-bold text-blue-400">공지사항</h1>
-        {/* --- 수정된 부분: '총관리자' 또는 '관리자'일 때 버튼 표시 --- */}
         {(profile?.role === '총관리자' || profile?.role === '관리자') && (
           <Link href="/admin/write-notice" className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-md text-sm">
             글쓰기
@@ -79,21 +101,55 @@ export default function NoticesPage() {
       <div className="bg-gray-800 rounded-lg shadow-lg">
         <ul className="divide-y divide-gray-700">
           {notices.length > 0 ? (
-            notices.map((notice) => (
-              <li key={notice.noticeId} className="p-4 hover:bg-gray-700/50 transition-colors">
-                <Link href={`/notices/${notice.noticeId}`} className="block">
-                  <div className="flex justify-between items-center">
-                    <p className="text-lg font-semibold text-white truncate">{notice.title}</p>
-                    <span className="text-sm text-gray-400 hidden md:block">
-                      {new Date(notice.createdAt).toLocaleDateString('ko-KR')}
-                    </span>
+            notices.map((notice) => {
+              const canModify = profile?.role === '총관리자' || (profile?.role === '관리자' && user.email === notice.authorEmail);
+              return (
+                <li key={notice.noticeId} className="p-6 group/item hover:bg-gray-700/50 transition-colors">
+                  <div className="flex flex-col sm:flex-row gap-6 items-start">
+                    <div className="flex-grow min-w-0">
+                      <div className="flex justify-between items-start">
+                        <Link href={`/notices/${notice.noticeId}`} className="block flex-grow min-w-0">
+                          <h2 className="text-xl font-semibold text-white group-hover/item:text-blue-400 transition-colors">{notice.title}</h2>
+                        </Link>
+                        <span className="text-xs text-gray-400 flex-shrink-0 ml-4 hidden md:block">
+                          {new Date(notice.createdAt).toLocaleDateString('ko-KR')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1 mb-2">작성자: {notice.authorNickname}</p>
+                      {/* --- 수정: 내용 미리보기를 3줄로 변경 --- */}
+                      <p className="text-sm text-gray-300 mt-1 line-clamp-3">{notice.content}</p>
+                    </div>
+                    {canModify && (
+                      <div className="flex flex-row sm:flex-col gap-2 opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 transition-opacity">
+                        <button onClick={() => router.push(`/admin/edit-notice/${notice.noticeId}`)} className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-md">수정</button>
+                        <button onClick={() => handleDelete(notice.noticeId)} className="text-xs bg-red-600 hover:bg-red-700 px-3 py-1 rounded-md">삭제</button>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-gray-500 mt-1">작성자: {notice.authorEmail}</p>
-                </Link>
-              </li>
-            ))
+                  {/* --- 수정: 이미지 썸네일 섹션을 아래로 이동하고 크기 조정 --- */}
+                  {notice.imageUrls && Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 && (
+                    <div className="flex gap-3 mt-4">
+                      {notice.imageUrls.slice(0, 3).map((url: string, index: number) => (
+                        <img
+                          key={index}
+                          src={url}
+                          alt={`${notice.title} ${index + 1}`}
+                          className="w-1/5 aspect-square object-cover rounded-md"
+                        />
+                      ))}
+                      {notice.imageUrls.length > 3 && (
+                        <div className="w-1/5 aspect-square rounded-md bg-gray-700 flex items-center justify-center text-lg font-bold">
+                          +{notice.imageUrls.length - 3}
+                        </div>
+                      )}
+                    </div>
+
+                  )}
+                </li>
+              );
+            })
           ) : (
-            <li className="p-4 text-center text-gray-400">작성된 공지사항이 없습니다.</li>
+            <li className="p-6 text-center text-gray-400">작성된 공지사항이 없습니다.</li>
           )}
         </ul>
       </div>
