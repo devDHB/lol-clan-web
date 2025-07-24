@@ -11,6 +11,7 @@ import Image from 'next/image';
 // 사용자 프로필 타입을 정의합니다.
 interface UserProfile {
     role: string;
+    nickname: string;
 }
 
 export default function Header() {
@@ -19,7 +20,6 @@ export default function Header() {
     const [profile, setProfile] = useState<UserProfile | null>(null);
 
     useEffect(() => {
-        // 사용자가 로그인하면 프로필 정보를 가져옵니다.
         if (user) {
             const fetchProfile = async () => {
                 try {
@@ -34,7 +34,6 @@ export default function Header() {
             };
             fetchProfile();
         } else {
-            // 로그아웃하면 프로필 정보를 비웁니다.
             setProfile(null);
         }
     }, [user]);
@@ -48,34 +47,35 @@ export default function Header() {
         }
     };
 
-    // 로그인하지 않은 상태에서는 헤더를 보여주지 않습니다.
     if (!user) {
         return null;
     }
 
     return (
-        <header className="bg-gray-800 text-white p-4 sticky top-0 z-50">
-            <div className="container mx-auto flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                    <Link href="/" className="flex items-center gap-2 text-lg font-bold hover:text-yellow-300">
+        <header className="sticky top-0 z-50 bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 shadow-lg">
+            <div className="container mx-auto flex justify-between items-center p-4 text-gray-300">
+                <nav className="flex items-center gap-4">
+                    <Link href="/" className="flex items-center gap-2 text-xl font-bold text-yellow-400 hover:text-yellow-300 transition-colors">
                         <Image src="/banana-logo.png" alt="바나나단 로고" width={24} height={24} />
                         <span>홈</span>
                     </Link>
-                    <Link href="/parties" className="text-lg font-bold hover:text-blue-400">파티</Link>
-                    <Link href="/scrims" className="text-lg font-bold hover:text-blue-400">내전</Link>
-                    <Link href="/notices" className="text-lg font-bold hover:text-blue-400">공지사항</Link>
-                    <Link href="/profile" className="text-lg font-bold hover:text-blue-400">내 프로필</Link>
-                </div>
+                    <div className="w-px h-6 bg-gray-700"></div>
+                    <Link href="/parties" className="text-lg font-medium hover:text-white transition-colors">파티</Link>
+                    <Link href="/scrims" className="text-lg font-medium hover:text-white transition-colors">내전</Link>
+                    <Link href="/notices" className="text-lg font-medium hover:text-white transition-colors">공지사항</Link>
+                    <Link href="/matches" className="text-lg font-medium hover:text-white transition-colors">매치 기록</Link>
+                </nav>
+
                 <div className="flex items-center gap-4">
                     {(profile?.role === '총관리자' || profile?.role === '관리자') && (
-                        <Link href="/admin/user-management" className="text-lg font-bold text-yellow-400 hover:text-yellow-300">
+                        <Link href="/admin/user-management" className="text-base font-semibold text-yellow-400 hover:text-yellow-300 transition-colors">
                             사용자 관리
                         </Link>
                     )}
-                    <span>{user.email}</span>
+                    <Link href="/profile" className="text-base font-medium hover:text-white transition-colors">{profile?.nickname || user.email?.split('@')[0]}</Link>
                     <button
                         onClick={handleLogout}
-                        className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-md text-sm"
+                        className="px-3 py-1.5 bg-red-600/50 hover:bg-red-600 border border-red-500/50 text-white font-semibold rounded-md text-sm transition-colors"
                     >
                         로그아웃
                     </button>

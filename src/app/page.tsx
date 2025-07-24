@@ -3,7 +3,7 @@
 import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import Image from 'next/image'; // 1. Image 컴포넌트 불러오기
+import Image from 'next/image';
 
 // 타입 정의
 interface Notice {
@@ -12,6 +12,7 @@ interface Notice {
   content: string;
   authorNickname: string;
   imageUrls?: string[];
+  createdAt: string;
 }
 interface Party {
   partyId: string;
@@ -19,14 +20,16 @@ interface Party {
   partyType: string;
   membersData: string | Member[];
   maxMembers: string;
-  requiredTier?: string; // 파티에 필요한 최소 티어
-  startTime?: string | null; // 파티 시작 시간 (텍스트)
+  createdAt: string;
+  requiredTier?: string;
+  startTime?: string | null;
 }
 interface Scrim {
   scrimId: string;
   scrimName: string;
+  creatorEmail: string;
   status: string;
-  applicants: string;
+  applicants: Member[];
   startTime: string;
 }
 interface Member {
@@ -50,18 +53,10 @@ const safeParseClient = (data: unknown): Member[] => {
   return [];
 };
 
-const formatTime = (isoString: string) => {
-  if (!isoString) return '';
-  try {
-    const date = new Date(isoString);
-    return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-  } catch (e) { return ''; }
-}
-
 const partyTypeColors: { [key: string]: string } = {
-  '자유랭크': 'bg-blue-600 text-white',
-  '듀오랭크': 'bg-purple-600 text-white',
-  '기타': 'bg-teal-600 text-white',
+  '자유랭크': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  '듀오랭크': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  '기타': 'bg-teal-500/20 text-teal-300 border-teal-500/30',
 };
 
 export default function HomePage() {
@@ -114,13 +109,11 @@ export default function HomePage() {
     }
   }, [user]);
 
-  // 로그인하지 않은 사용자를 위한 화면
   if (!user) {
     return (
       <main className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
         <h1 className="text-3xl font-bold mb-4 flex items-center justify-center gap-2">
           <span>바나나단</span>
-          {/* public 폴더의 이미지를 사용합니다. 파일 이름은 실제 파일에 맞게 수정해주세요. */}
           <Image src="/banana-logo.png" alt="바나나단 로고" width={32} height={32} />
         </h1>
         <p className="mb-8">로그인 후 모든 기능을 이용할 수 있습니다.</p>
@@ -137,44 +130,39 @@ export default function HomePage() {
 
   return (
     <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
-      {/* 2. 제목을 이미지와 텍스트로 변경 */}
       <h1 className="text-4xl font-bold mb-8 text-center text-yellow-400 flex items-center justify-center gap-3">
         <span>바나나단</span>
-        {/* public 폴더의 이미지를 사용합니다. 파일 이름은 실제 파일에 맞게 수정해주세요. */}
         <Image src="/banana-logo.png" alt="바나나단 로고" width={40} height={40} />
       </h1>
 
       <div className="space-y-8">
-        {/* 1행: 공지사항 섹션 */}
         <section className="bg-gray-800 p-6 rounded-lg">
           <h2 className="text-2xl font-bold mb-4 border-b border-gray-700 pb-2">📢 공지사항</h2>
-          <ul className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {notices.length > 0 ? notices.map(notice => (
-              <li key={notice.noticeId} className="border-b border-gray-700/50 pb-4 last:border-b-0">
-                <Link href={`/notices/${notice.noticeId}`} className="block group">
-                  <div className="flex gap-4 items-start">
-                    {notice.imageUrls && notice.imageUrls.length > 0 && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={notice.imageUrls[0]} alt={notice.title} className="w-24 h-24 object-cover rounded-md flex-shrink-0" />
-                    )}
-                    <div className="flex-grow">
-                      <h3 className="text-lg font-semibold text-yellow-400 mb-1 group-hover:text-yellow-300 transition-colors">{notice.title}</h3>
-                      <p className="text-gray-300 text-sm mb-2 line-clamp-2">{notice.content}</p>
-                      <div className="text-right text-xs text-gray-500">
-                        <span>작성자: {notice.authorNickname}</span>
-                      </div>
+              <Link key={notice.noticeId} href={`/notices/${notice.noticeId}`} className="block group bg-gray-700/50 rounded-lg p-4 hover:bg-gray-700 transition-colors">
+                <div className="flex gap-4 items-start">
+                  {notice.imageUrls && notice.imageUrls.length > 0 && (
+                    <div className="w-24 h-24 relative flex-shrink-0">
+                      <Image src={notice.imageUrls[0]} alt={notice.title} layout="fill" objectFit="cover" className="rounded-md" />
+                    </div>
+                  )}
+                  <div className="flex-grow min-w-0">
+                    <h3 className="text-xl font-semibold text-yellow-400 mb-1 truncate group-hover:text-yellow-300">{notice.title}</h3>
+                    <p className="text-gray-300 text-base mb-2 line-clamp-2 h-12">{notice.content}</p>
+                    <div className="flex justify-between items-center text-sm text-gray-500 mt-1">
+                      <span>{notice.authorNickname}</span>
+                      <span>{new Date(notice.createdAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })}</span>
                     </div>
                   </div>
-                </Link>
-              </li>
-            )) : <p className="text-gray-400">새로운 공지사항이 없습니다.</p>}
-          </ul>
-          <Link href="/notices" className="text-blue-400 hover:underline mt-4 inline-block text-sm">전체 공지 보기 →</Link>
+                </div>
+              </Link>
+            )) : <p className="text-gray-400 md:col-span-2 text-center py-8">새로운 공지사항이 없습니다.</p>}
+          </div>
+          <Link href="/notices" className="text-blue-400 hover:underline mt-6 inline-block text-base">전체 공지 보기 →</Link>
         </section>
 
-        {/* 2행: 파티 및 내전 현황 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* 파티 현황 섹션 */}
           <section className="bg-gray-800 p-6 rounded-lg">
             <h2 className="text-2xl font-bold mb-4 border-b border-gray-700 pb-2">🔥 파티 현황</h2>
             <ul className="space-y-3">
@@ -182,53 +170,56 @@ export default function HomePage() {
                 const members = safeParseClient(party.membersData);
                 const leaderEmail = members.length > 0 ? members[0].email : '';
                 const leaderNickname = userMap[leaderEmail] || leaderEmail.split('@')[0];
-                const typeStyle = partyTypeColors[party.partyType] || 'bg-gray-600 text-white';
-
-                // 파티 정보 문자열 조합
-                const displayTier = party.requiredTier && party.requiredTier.trim() !== '' ? party.requiredTier.trim() : '티어 제한 없음';
-                const displayTime = party.startTime && party.startTime.trim() !== '' ? party.startTime.trim() : '즉시 시작';
-
-                let partyInfoString = party.partyName;
-                if (party.partyType === '자유랭크' || party.partyType === '듀오랭크') {
-                    partyInfoString += ` / ${displayTier}`;
-                }
-                partyInfoString += ` / ${displayTime} - ${leaderNickname}`;
-
-
+                const typeStyle = partyTypeColors[party.partyType] || 'bg-gray-600';
                 return (
-                  <li key={party.partyId} className="truncate hover:text-blue-400 transition-colors">
-                    <Link href="/parties" className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${typeStyle}`}>
-                        {party.partyType.replace('랭크', '').replace('게임', '')}
-                      </span>
-                      {/* 변경된 파티 정보 표시 */}
-                      <span>
-                        {partyInfoString}
-                      </span>
+                  <li key={party.partyId} className="p-3 bg-gray-700/50 rounded-md hover:bg-gray-700 transition-colors">
+                    <Link href="/parties" className="block space-y-2">
+                      <div className="flex justify-between items-start">
+                        <h4 className="font-bold text-lg text-white truncate pr-2">{party.partyName}</h4>
+                        <span className={`flex-shrink-0 px-2 py-0.5 text-sm font-semibold rounded-full border ${typeStyle}`}>
+                          {party.partyType}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm text-gray-400">
+                        <span>👑 {leaderNickname}</span>
+                        <span>{`${members.length}/${party.maxMembers}`} | ⏰ {party.startTime || '즉시 시작'}</span>
+                      </div>
+                      {(party.partyType === '자유랭크' || party.partyType === '듀오랭크') && party.requiredTier && (
+                        <div className="text-sm text-orange-400">티어: {party.requiredTier}</div>
+                      )}
                     </Link>
                   </li>
-                );
+                )
               }) : <p className="text-gray-400">진행중인 파티가 없습니다.</p>}
             </ul>
-            <Link href="/parties" className="text-blue-400 hover:underline mt-4 inline-block text-sm">전체 파티 보기 →</Link>
+            <Link href="/parties" className="text-blue-400 hover:underline mt-4 inline-block text-base">전체 파티 보기 →</Link>
           </section>
 
-          {/* 내전 현황 섹션 */}
           <section className="bg-gray-800 p-6 rounded-lg">
             <h2 className="text-2xl font-bold mb-4 border-b border-gray-700 pb-2">⚔️ 내전 현황</h2>
             <ul className="space-y-3">
               {scrims.length > 0 ? scrims.map(scrim => {
-                const time = formatTime(scrim.startTime);
+                const creatorNickname = userMap[scrim.creatorEmail] || scrim.creatorEmail.split('@')[0];
+                const applicants = safeParseClient(scrim.applicants);
                 return (
-                  <li key={scrim.scrimId} className="truncate hover:text-blue-400 transition-colors">
-                    <Link href={`/scrims/${scrim.scrimId}`}>
-                      {`[${time}] ${scrim.scrimName || '피어리스 내전'}`}
+                  <li key={scrim.scrimId} className="p-3 bg-gray-700/50 rounded-md hover:bg-gray-700 transition-colors">
+                    <Link href={`/scrims/${scrim.scrimId}`} className="block space-y-2">
+                      <div className="flex justify-between items-start">
+                        <h4 className="font-bold text-lg text-white truncate pr-2">{scrim.scrimName || '이름 없는 내전'}</h4>
+                        <span className="flex-shrink-0 px-2 py-0.5 text-sm font-semibold rounded-full bg-green-500/20 text-green-300 border border-green-500/30">
+                          {scrim.status}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm text-gray-400">
+                        <span>👑 주최자: {creatorNickname}</span>
+                        <span>{`${applicants.length}/10`}</span>
+                      </div>
                     </Link>
                   </li>
                 )
               }) : <p className="text-gray-400">진행중인 내전이 없습니다.</p>}
             </ul>
-            <Link href="/scrims" className="text-blue-400 hover:underline mt-4 inline-block text-sm">전체 내전 보기 →</Link>
+            <Link href="/scrims" className="text-blue-400 hover:underline mt-4 inline-block text-base">전체 내전 보기 →</Link>
           </section>
         </div>
       </div>

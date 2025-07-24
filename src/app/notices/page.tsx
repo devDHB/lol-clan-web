@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 // 타입 정의
 interface Notice {
@@ -15,6 +16,7 @@ interface Notice {
   createdAt: string;
   imageUrls?: string[];
 }
+
 interface UserProfile {
   role: string;
 }
@@ -98,60 +100,43 @@ export default function NoticesPage() {
         )}
       </div>
 
-      <div className="bg-gray-800 rounded-lg shadow-lg">
-        <ul className="divide-y divide-gray-700">
-          {notices.length > 0 ? (
-            notices.map((notice) => {
-              const canModify = profile?.role === '총관리자' || (profile?.role === '관리자' && user.email === notice.authorEmail);
-              return (
-                <li key={notice.noticeId} className="p-6 group/item hover:bg-gray-700/50 transition-colors">
-                  <div className="flex flex-col sm:flex-row gap-6 items-start">
-                    <div className="flex-grow min-w-0">
-                      <div className="flex justify-between items-start">
-                        <Link href={`/notices/${notice.noticeId}`} className="block flex-grow min-w-0">
-                          <h2 className="text-xl font-semibold text-white group-hover/item:text-blue-400 transition-colors">{notice.title}</h2>
-                        </Link>
-                        <span className="text-xs text-gray-400 flex-shrink-0 ml-4 hidden md:block">
-                          {new Date(notice.createdAt).toLocaleDateString('ko-KR')}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-500 mt-1 mb-2">작성자: {notice.authorNickname}</p>
-                      {/* --- 수정: 내용 미리보기를 3줄로 변경 --- */}
-                      <p className="text-sm text-gray-300 mt-1 line-clamp-3">{notice.content}</p>
+      <div className="space-y-8">
+        {notices.length > 0 ? (
+          notices.map((notice) => {
+            const canModify = profile?.role === '총관리자' || (profile?.role === '관리자' && user.email === notice.authorEmail);
+            return (
+              <div key={notice.noticeId} className="group/item relative bg-gray-800 rounded-lg shadow-lg overflow-hidden transition-all duration-300 flex flex-col md:flex-row md:h-64">
+                {notice.imageUrls && notice.imageUrls.length > 0 && (
+                  <Link href={`/notices/${notice.noticeId}`} className="block md:w-2/5 flex-shrink-0">
+                    <div className="w-full h-64 md:h-full relative">
+                      <Image src={notice.imageUrls[0]} alt={notice.title} layout="fill" objectFit="cover" className="group-hover/item:scale-105 transition-transform duration-300" />
                     </div>
-                    {canModify && (
-                      <div className="flex flex-row sm:flex-col gap-2 opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 transition-opacity">
-                        <button onClick={() => router.push(`/admin/edit-notice/${notice.noticeId}`)} className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-md">수정</button>
-                        <button onClick={() => handleDelete(notice.noticeId)} className="text-xs bg-red-600 hover:bg-red-700 px-3 py-1 rounded-md">삭제</button>
-                      </div>
-                    )}
+                  </Link>
+                )}
+                <div className="p-6 flex flex-col flex-grow">
+                  <Link href={`/notices/${notice.noticeId}`} className="block flex-grow">
+                    <h2 className="text-2xl font-semibold text-white group-hover/item:text-yellow-400 transition-colors">{notice.title}</h2>
+                    <p className="text-sm text-gray-400 mt-2 line-clamp-4">{notice.content}</p>
+                  </Link>
+                  <div className="flex justify-between items-center mt-auto text-xs text-gray-500 pt-4 border-t border-gray-700">
+                    <span>{notice.authorNickname}</span>
+                    <span>{new Date(notice.createdAt).toLocaleDateString('ko-KR')}</span>
                   </div>
-                  {/* --- 수정: 이미지 썸네일 섹션을 아래로 이동하고 크기 조정 --- */}
-                  {notice.imageUrls && Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 && (
-                    <div className="flex gap-3 mt-4">
-                      {notice.imageUrls.slice(0, 3).map((url: string, index: number) => (
-                        <img
-                          key={index}
-                          src={url}
-                          alt={`${notice.title} ${index + 1}`}
-                          className="w-1/5 aspect-square object-cover rounded-md"
-                        />
-                      ))}
-                      {notice.imageUrls.length > 3 && (
-                        <div className="w-1/5 aspect-square rounded-md bg-gray-700 flex items-center justify-center text-lg font-bold">
-                          +{notice.imageUrls.length - 3}
-                        </div>
-                      )}
-                    </div>
-
-                  )}
-                </li>
-              );
-            })
-          ) : (
-            <li className="p-6 text-center text-gray-400">작성된 공지사항이 없습니다.</li>
-          )}
-        </ul>
+                </div>
+                {canModify && (
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                    <button onClick={() => router.push(`/admin/edit-notice/${notice.noticeId}`)} className="text-xs bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-md">수정</button>
+                    <button onClick={() => handleDelete(notice.noticeId)} className="text-xs bg-red-600 hover:bg-red-700 px-3 py-1 rounded-md">삭제</button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="p-6 text-center text-gray-400 bg-gray-800 rounded-lg">
+            <p>작성된 공지사항이 없습니다.</p>
+          </div>
+        )}
       </div>
     </main>
   );

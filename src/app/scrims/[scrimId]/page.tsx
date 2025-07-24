@@ -34,6 +34,10 @@ interface UserProfile {
     role: string;
 }
 
+interface UserMap {
+    [email: string]: string;
+}
+
 interface RankedPosition {
     name: string;
     rank: number;
@@ -217,7 +221,7 @@ function TeamColumn({ id, title, teamPlayers, color = 'gray', onRemovePlayer }: 
 }) {
     const { setNodeRef, isOver } = useDroppable({ id }); // 이 droppable은 전체 컬럼을 위한 것 (예: applicants 풀)
     const borderColor = color === 'blue' ? 'border-blue-500' : color === 'red' ? 'border-red-500' : 'border-gray-600';
-    
+
     return (
         <div ref={setNodeRef} className={`bg-gray-800 p-4 rounded-lg w-full border-2 ${isOver ? 'border-green-500' : borderColor}`}>
             <h3 className={`text-xl font-bold mb-4 text-center text-white`}>{title} ({Object.values(teamPlayers).filter(p => p !== null).length})</h3>
@@ -253,17 +257,22 @@ export default function ScrimDetailPage() {
 
     const [scrim, setScrim] = useState<ScrimData | null>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [userMap, setUserMap] = useState<UserMap>({}); // 닉네임 맵 state 추가
     const [loading, setLoading] = useState(true);
-    
+
+    // --- 제목 수정을 위한 state 추가 ---
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [newScrimName, setNewScrimName] = useState('');
+
     const [tier, setTier] = useState('');
     const [selectedPositions, setSelectedPositions] = useState<RankedPosition[]>([]);
-    
+
     // applicants는 여전히 Applicant[]
     const [applicants, setApplicants] = useState<Applicant[]>([]);
     // 팀 구성중 상태에서만 사용될 포지션 슬롯별 플레이어 상태
     const [blueTeamSlots, setBlueTeamSlots] = useState<Record<string, Applicant | null>>(initialTeamState);
     const [redTeamSlots, setRedTeamSlots] = useState<Record<string, Applicant | null>>(initialTeamState);
-    
+
     const [championSelections, setChampionSelections] = useState<{ [email: string]: string }>({});
     // 모든 챔피언 이름을 저장할 상태 추가
     const [allChampionNames, setAllChampionNames] = useState<Set<string>>(new Set());
@@ -275,15 +284,25 @@ export default function ScrimDetailPage() {
         try {
             const fetchPromises = [
                 fetch(`/api/scrims/${scrimId}`),
+                fetch('/api/users'), // 모든 유저 정보 가져오기
                 fetch(`/api/riot/champions`) // 모든 챔피언 이름 불러오기
             ];
             if (user) {
                 fetchPromises.push(fetch(`/api/users/${user.email}`));
             }
-            const [scrimRes, allChampionsRes, profileRes] = await Promise.all(fetchPromises);
+            const [scrimRes, usersRes, allChampionsRes, profileRes] = await Promise.all(fetchPromises);
 
             if (!scrimRes.ok) throw new Error('내전 정보를 불러오는 데 실패했습니다.');
+            if (!usersRes.ok) throw new Error('유저 정보를 불러오는 데 실패했습니다.');
+
             const scrimData = await scrimRes.json();
+            const usersData: { email: string; nickname: string }[] = await usersRes.json();
+
+            // 이메일을 key, 닉네임을 value로 하는 맵 생성
+            const map: UserMap = {};
+            usersData.forEach(u => { map[u.email] = u.nickname; });
+            setUserMap(map);
+
             setScrim(scrimData);
 
             if (allChampionsRes.ok) {
@@ -331,7 +350,7 @@ export default function ScrimDetailPage() {
                 // 1. scrim.blueTeam에서 슬롯 채우기 (특정 포지션 우선)
                 const tempBluePlayers = [...(scrim.blueTeam || [])];
                 POSITIONS.forEach(pos => { // TOP, JG, MID, AD, SUP 순서로 채움
-                    const playerIndex = tempBluePlayers.findIndex(player => 
+                    const playerIndex = tempBluePlayers.findIndex(player =>
                         player.positions.some(p => p.split('(')[0].trim() === pos) // 해당 포지션을 가진 플레이어 찾기
                     );
                     if (playerIndex !== -1 && newBlueTeamSlots[pos] === null) {
@@ -354,7 +373,7 @@ export default function ScrimDetailPage() {
                 // 2. scrim.redTeam에서 슬롯 채우기 (특정 포지션 우선)
                 const tempRedPlayers = [...(scrim.redTeam || [])];
                 POSITIONS.forEach(pos => { // TOP, JG, MID, AD, SUP 순서로 채움
-                    const playerIndex = tempRedPlayers.findIndex(player => 
+                    const playerIndex = tempRedPlayers.findIndex(player =>
                         player.positions.some(p => p.split('(')[0].trim() === pos) // 해당 포지션을 가진 플레이어 찾기
                     );
                     if (playerIndex !== -1 && newRedTeamSlots[pos] === null) {
@@ -380,7 +399,7 @@ export default function ScrimDetailPage() {
                 // 3. 남은 참가자 (applicants) 풀 구성:
                 //    팀 슬롯에 할당되지 않은 모든 유니크 플레이어들을 applicants로 설정
                 const finalApplicants = uniqueAllPlayers.filter(player => !assignedPlayerEmails.has(player.email));
-                
+
                 setApplicants(finalApplicants);
 
             } else {
@@ -433,28 +452,21 @@ export default function ScrimDetailPage() {
             body.teams = { blueTeam: blueTeamArray, redTeam: redTeamArray }; // 배열 형태로 서버에 전송
         } else if (action === 'end_game') {
             const allPlayers = [...(scrim?.blueTeam || []), ...(scrim?.redTeam || [])];
-            
-            // 챔피언 유효성 검사 로직 제거 (요청에 따라)
-            // const invalidChampions: string[] = [];
-            // allPlayers.forEach(player => {
-            //     const selectedChampion = championSelections[player.email]?.toLowerCase();
-            //     if (selectedChampion && !allChampionNames.has(selectedChampion)) {
-            //         invalidChampions.push(player.nickname || player.email);
-            //     }
-            //     if (!selectedChampion || selectedChampion.trim() === '') {
-            //         invalidChampions.push(player.nickname || player.email);
-            //     }
-            // });
 
-            // if (invalidChampions.length > 0) {
-            //     return alert(`다음 플레이어의 챔피언 이름이 유효하지 않거나 비어있습니다: ${invalidChampions.join(', ')}\n정확한 챔피언 이름을 입력해주세요.`);
-            // }
+            // --- 챔피언 유효성 검사 로직 수정 ---
+            const invalidChampionPlayers: string[] = [];
+            allPlayers.forEach(player => {
+                const selectedChampion = championSelections[player.email]?.trim();
+                // 비어있지 않은 경우에만, 유효한 챔피언 이름인지 검사
+                if (selectedChampion && !allChampionNames.has(selectedChampion.toLowerCase())) {
+                    invalidChampionPlayers.push(player.nickname || player.email);
+                }
+            });
 
-            // 챔피언 입력 필드가 비어있어도 버튼은 눌리지만, '미입력'으로 저장됩니다.
-            // 모든 플레이어의 챔피언이 선택되었는지 확인하는 조건도 제거합니다.
-            // if (Object.keys(championSelections).length !== allPlayers.length) {
-            //     return alert('모든 플레이어의 챔피언을 선택해주세요.');
-            // }
+            if (invalidChampionPlayers.length > 0) {
+                return alert(`다음 플레이어의 챔피언 이름이 유효하지 않습니다: ${invalidChampionPlayers.join(', ')}\n정확한 챔피언 이름을 입력하거나, 비워두세요.`);
+            }
+
             body.winningTeam = payload.winningTeam;
             body.championData = {
                 blueTeam: scrim?.blueTeam.map(p => ({ ...p, champion: championSelections[p.email] || '미입력', team: 'blue' })),
@@ -491,6 +503,52 @@ export default function ScrimDetailPage() {
             fetchData();
         } catch (error: any) {
             alert(`오류: ${error.message}`);
+        }
+    };
+
+    // --- 내전 제목 수정 함수 추가 ---
+    const handleUpdateScrimName = async () => {
+        if (!newScrimName.trim() || !user || !user.email || !scrim) return;
+        try {
+            const res = await fetch(`/api/scrims/${scrimId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ newScrimName, userEmail: user.email }),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || '제목 변경 실패');
+            }
+            alert('내전 제목이 변경되었습니다.');
+            setIsEditingTitle(false);
+            fetchData(); // 데이터 새로고침
+        } catch (error: any) {
+            alert(`오류: ${error.message}`);
+        }
+    };
+
+    // --- 내전 해체 함수 추가 ---
+    const handleDisbandScrim = async () => {
+        if (!user || !user.email || !scrim) return;
+
+        if (confirm(`정말로 "${scrim.scrimName}" 내전을 해체하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
+            try {
+                const res = await fetch(`/api/scrims/${scrimId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userEmail: user.email }),
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.error || '내전 해체 실패');
+                }
+
+                alert('내전이 해체되었습니다.');
+                router.push('/scrims'); // 해체 후 로비로 이동
+            } catch (error: any) {
+                alert(`오류: ${error.message}`);
+            }
         }
     };
 
@@ -676,6 +734,8 @@ export default function ScrimDetailPage() {
     const isCreator = user?.email === scrim.creatorEmail;
     const isAdmin = profile?.role === '총관리자' || profile?.role === '관리자';
     const canManage = isAdmin || isCreator;
+    const creatorNickname = userMap[scrim.creatorEmail] || scrim.creatorEmail.split('@')[0];
+
 
     const currentApplicants = scrim.applicants || [];
     const waitlist = scrim.waitlist || [];
@@ -688,11 +748,47 @@ export default function ScrimDetailPage() {
         <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
             <div className="mb-6">
                 <Link href="/scrims" className="text-blue-400 hover:underline">← 내전 로비로 돌아가기</Link>
+                {/* --- 내전 해체 버튼 추가 --- */}
+                {canManage && scrim.status !== '종료' && (
+                    <button
+                        onClick={handleDisbandScrim}
+                        className="py-1 px-3 ml-3 bg-red-800 hover:bg-red-700 text-white font-semibold rounded-md text-sm"
+                    >
+                        내전 해체
+                    </button>
+                )}
             </div>
 
             <header className="text-center mb-8">
-                <h1 className="text-4xl font-bold text-yellow-400">{scrim.scrimName}</h1>
+                {/* --- 제목 수정 UI 추가 --- */}
+                {isEditingTitle && canManage ? (
+                    <div className="flex items-center justify-center gap-2">
+                        <input
+                            type="text"
+                            value={newScrimName}
+                            onChange={(e) => setNewScrimName(e.target.value)}
+                            className="text-4xl font-bold text-yellow-400 bg-gray-700 rounded-md px-2 py-1 text-center"
+                        />
+                        <button onClick={handleUpdateScrimName} className="bg-green-600 px-3 py-1 rounded-md text-sm">저장</button>
+                        <button onClick={() => setIsEditingTitle(false)} className="bg-gray-600 px-3 py-1 rounded-md text-sm">취소</button>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-center gap-4">
+                        <h1 className="text-4xl font-bold text-yellow-400">{scrim.scrimName}</h1>
+                        {canManage && scrim.status !== '종료' && (
+                            <button
+                                onClick={() => setIsEditingTitle(true)}
+                                className="text-xs bg-gray-600 p-2 rounded-md hover:bg-gray-500"
+                                title="내전 제목 수정"
+                            >
+                                ✏️
+                            </button>
+                        )}
+                    </div>
+                )}
                 <p className="text-lg text-gray-400 mt-2">상태: <span className="font-semibold text-green-400">{scrim.status}</span></p>
+                {/* --- 주최자 닉네임 표시 추가 --- */}
+                <p className="text-sm text-gray-500 mt-1">주최자: {creatorNickname}</p>
             </header>
 
             {canManage && scrim.status === '모집중' && (

@@ -208,7 +208,7 @@ export async function PUT(
                         }
                         // `a`는 이미 상단에서 필터링되었으므로 `a && typeof a.email === 'string'` 검사는 불필요
                         let newApplicantsAfterLeave = applicants.filter((a: Applicant) => a.email !== applicantData.email);
-                        
+
                         if (newApplicantsAfterLeave.length < 10 && waitlist.length > 0) {
                             const newMember = waitlist.shift();
                             if (newMember) {
@@ -285,7 +285,7 @@ export async function PUT(
                         if (!memberEmailToRemove || typeof memberEmailToRemove !== 'string') {
                             throw new Error("제거할 멤버 이메일이 유효하지 않습니다.");
                         }
-                        
+
                         // 모든 관련 배열에서 멤버 제거
                         const filteredApplicants = applicants.filter((a: Applicant) => a.email !== memberEmailToRemove);
                         const filteredBlueTeam = blueTeam.filter((p: Applicant) => p.email !== memberEmailToRemove);
@@ -305,7 +305,7 @@ export async function PUT(
                             if (promotedMember) {
                                 updatedApplicants.push(promotedMember);
                             }
-                        } 
+                        }
                         // '팀 구성중' 상태일 때 팀에 빈자리가 생기면 (applicants로) 대기열에서 승격
                         else if (data?.status === '팀 구성중' && (updatedBlueTeam.length < 5 || updatedRedTeam.length < 5) && updatedWaitlist.length > 0) {
                             promotedMember = updatedWaitlist.shift();
@@ -333,5 +333,103 @@ export async function PUT(
         console.error('PUT Scrim API Error:', error);
         const errorMessage = error instanceof Error ? error.message : '내전 관련 작업에 실패했습니다.';
         return NextResponse.json({ error: errorMessage }, { status: 500 });
+    }
+}
+
+
+// PATCH: 내전 이름을 수정하는 함수 (신규 추가)
+export async function PATCH(
+    request: NextRequest,
+    { params }: { params: { scrimId: string | string[] } }
+) {
+    try {
+        const resolvedParams = await params;
+        const scrimId = Array.isArray(resolvedParams.scrimId) ? resolvedParams.scrimId[0] : resolvedParams.scrimId;
+        const { newScrimName, userEmail } = await request.json();
+
+        if (!scrimId || !newScrimName || !userEmail) {
+            return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
+        }
+
+        const scrimRef = db.collection('scrims').doc(scrimId);
+        const scrimDoc = await scrimRef.get();
+
+        if (!scrimDoc.exists) {
+            return NextResponse.json({ error: '내전을 찾을 수 없습니다.' }, { status: 404 });
+        }
+
+        const scrimData = scrimDoc.data();
+        const creatorEmail = scrimData?.creatorEmail;
+
+        const userSnapshot = await db.collection('users').where('email', '==', userEmail).limit(1).get();
+        if (userSnapshot.empty) {
+            return NextResponse.json({ error: '사용자 정보를 찾을 수 없습니다.' }, { status: 403 });
+        }
+        const userRole = userSnapshot.docs[0].data().role;
+
+        const hasPermission =
+            userRole === '총관리자' ||
+            userRole === '관리자' ||
+            userEmail === creatorEmail;
+
+        if (!hasPermission) {
+            return NextResponse.json({ error: '내전 제목을 수정할 권한이 없습니다.' }, { status: 403 });
+        }
+
+        await scrimRef.update({ scrimName: newScrimName });
+
+        return NextResponse.json({ message: '내전 제목이 성공적으로 변경되었습니다.' });
+
+    } catch (error) {
+        console.error('PATCH Scrim API Error:', error);
+        return NextResponse.json({ error: '내전 제목 수정에 실패했습니다.' }, { status: 500 });
+    }
+}
+
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: { scrimId: string | string[] } }
+) {
+    try {
+        const resolvedParams = await params;
+        const scrimId = Array.isArray(resolvedParams.scrimId) ? resolvedParams.scrimId[0] : resolvedParams.scrimId;
+        const { userEmail } = await request.json();
+
+        if (!scrimId || !userEmail) {
+            return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
+        }
+
+        const scrimRef = db.collection('scrims').doc(scrimId);
+        const scrimDoc = await scrimRef.get();
+
+        if (!scrimDoc.exists) {
+            return NextResponse.json({ error: '내전을 찾을 수 없습니다.' }, { status: 404 });
+        }
+
+        const scrimData = scrimDoc.data();
+        const creatorEmail = scrimData?.creatorEmail;
+
+        const userSnapshot = await db.collection('users').where('email', '==', userEmail).limit(1).get();
+        if (userSnapshot.empty) {
+            return NextResponse.json({ error: '사용자 정보를 찾을 수 없습니다.' }, { status: 403 });
+        }
+        const userRole = userSnapshot.docs[0].data().role;
+
+        const hasPermission =
+            userRole === '총관리자' ||
+            userRole === '관리자' ||
+            userEmail === creatorEmail;
+
+        if (!hasPermission) {
+            return NextResponse.json({ error: '내전을 해체할 권한이 없습니다.' }, { status: 403 });
+        }
+
+        await scrimRef.delete();
+
+        return NextResponse.json({ message: '내전이 성공적으로 해체되었습니다.' });
+
+    } catch (error) {
+        console.error('DELETE Scrim API Error:', error);
+        return NextResponse.json({ error: '내전 해체에 실패했습니다.' }, { status: 500 });
     }
 }

@@ -18,8 +18,8 @@ interface Party {
   waitingData: string | Member[];
   createdAt: string;
   maxMembers: string;
-  requiredTier?: string; // 파티에 필요한 최소 티어
-  startTime?: string | null; // 파티 시작 시간 (ISO string)
+  requiredTier?: string;
+  startTime?: string | null;
 }
 
 interface UserProfile {
@@ -32,8 +32,6 @@ interface UserMap {
 
 const POSITIONS = ['ALL', 'TOP', 'JG', 'MID', 'AD', 'SUP'];
 const PARTY_TYPES = ['전체', '자유랭크', '듀오랭크', '기타'];
-// TIERS 배열은 더 이상 드롭다운에 사용되지 않으므로 제거합니다.
-// const TIERS = ['UNRANKED', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER']; // 티어 목록
 
 // 헬퍼 함수들
 const handlePositionChange = (
@@ -70,31 +68,34 @@ export default function PartiesPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [createMode, setCreateMode] = useState<string | null>(null);
-  const [newPartyName, setNewPartyName] = useState(''); // 새 파티 생성 시 사용
   const [filter, setFilter] = useState('전체');
   const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
-  const [editingPartyId, setEditingPartyId] = useState<string | null>(null);
-  const [editingMemberEmail, setEditingMemberEmail] = useState<string | null>(null);
-  const [editingPositions, setEditingPositions] = useState<string[]>([]);
 
-  // --- 새로운 파티 생성 시 사용될 상태 ---
+  const [newPartyName, setNewPartyName] = useState('');
   const [newPartyRequiredTier, setNewPartyRequiredTier] = useState('');
   const [newPartyStartTime, setNewPartyStartTime] = useState('');
 
-  // --- 파티 정보 수정 시 사용될 상태 ---
+  const [editingPartyId, setEditingPartyId] = useState<string | null>(null);
   const [editingPartyName, setEditingPartyName] = useState('');
   const [editingRequiredTier, setEditingRequiredTier] = useState('');
   const [editingStartTime, setEditingStartTime] = useState('');
 
+  const [editingMemberEmail, setEditingMemberEmail] = useState<string | null>(null);
+  const [editingPositions, setEditingPositions] = useState<string[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [partiesRes, usersRes, profileRes] = await Promise.all([
+      const fetchPromises = [
         fetch('/api/parties', { cache: 'no-store' }),
-        fetch('/api/users', { cache: 'no-store' }),
-        user ? fetch(`/api/users/${user.email}`, { cache: 'no-store' }) : Promise.resolve(null),
-      ]);
+        fetch('/api/users', { cache: 'no-store' })
+      ];
+      if (user) {
+        fetchPromises.push(fetch(`/api/users/${user.email}`, { cache: 'no-store' }));
+      }
+
+      const responses = await Promise.all(fetchPromises);
+      const [partiesRes, usersRes, profileRes] = responses;
 
       if (!partiesRes.ok) throw new Error('파티 정보를 불러오지 못했습니다.');
       if (!usersRes.ok) throw new Error('유저 정보를 불러오지 못했습니다.');
@@ -125,15 +126,14 @@ export default function PartiesPage() {
     fetchData();
   }, [fetchData]);
 
-
   const handleCreateParty = async (partyType: string) => {
     if (!newPartyName.trim() || !user || !user.email) {
       alert('파티 이름과 로그인 정보가 필요합니다.');
       return;
     }
     if ((partyType === '자유랭크' || partyType === '듀오랭크') && (!newPartyRequiredTier || newPartyRequiredTier.trim() === '')) {
-        alert(`${partyType} 파티는 필수 티어를 입력해야 합니다.`);
-        return;
+      alert(`${partyType} 파티는 필수 티어를 입력해야 합니다.`);
+      return;
     }
 
     try {
@@ -196,7 +196,6 @@ export default function PartiesPage() {
     }
   };
 
-  // 파티 이름, 티어, 시간 수정 또는 포지션 수정
   const handleUpdateParty = async (partyId: string, action: 'update_details' | 'update_positions') => {
     if (!user?.email) return;
     const body: { [key: string]: unknown } = { partyId, userEmail: user.email, action };
@@ -208,25 +207,24 @@ export default function PartiesPage() {
       }
       body.newPositions = editingPositions;
     } else if (action === 'update_details') {
-        if (!editingPartyName.trim()) {
-            alert('파티 이름은 비워둘 수 없습니다.');
-            return;
-        }
-        // 티어 유효성 검사 (랭크 파티 타입에만 해당)
-        const partyToEdit = parties.find(p => p.partyId === partyId);
-        if ((partyToEdit?.partyType === '자유랭크' || partyToEdit?.partyType === '듀오랭크') && !editingRequiredTier.trim()) {
-            alert(`${partyToEdit?.partyType} 파티는 필수 티어를 입력해야 합니다.`);
-            return;
-        }
+      if (!editingPartyName.trim()) {
+        alert('파티 이름은 비워둘 수 없습니다.');
+        return;
+      }
+      const partyToEdit = parties.find(p => p.partyId === partyId);
+      if ((partyToEdit?.partyType === '자유랭크' || partyToEdit?.partyType === '듀오랭크') && !editingRequiredTier.trim()) {
+        alert(`${partyToEdit?.partyType} 파티는 필수 티어를 입력해야 합니다.`);
+        return;
+      }
 
-        body.newPartyName = editingPartyName.trim();
-        body.newRequiredTier = editingRequiredTier.trim();
-        body.newStartTime = editingStartTime.trim();
+      body.newPartyName = editingPartyName.trim();
+      body.newRequiredTier = editingRequiredTier.trim();
+      body.newStartTime = editingStartTime.trim();
     }
 
     try {
       const res = await fetch('/api/parties', {
-        method: 'PATCH', // PATCH method는 부분 업데이트에 적합
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -234,13 +232,9 @@ export default function PartiesPage() {
         const data = await res.json();
         throw new Error(data.error || '업데이트 실패');
       }
-      // 수정 상태 초기화
       setEditingPartyId(null);
       setEditingMemberEmail(null);
-      setEditingPartyName('');
-      setEditingRequiredTier('');
-      setEditingStartTime('');
-      fetchData(); // 데이터 다시 불러오기
+      fetchData();
     } catch (error: unknown) {
       if (error instanceof Error) alert(error.message);
     }
@@ -248,7 +242,7 @@ export default function PartiesPage() {
 
   const handleDisbandParty = async (partyId: string) => {
     if (!user || !user.email) return;
-    if (confirm('정말로 이 파티를 해체하시겠습니까? 모든 멤버가 파티에서 제외됩니다.')) {
+    if (confirm('정말로 이 파티를 해체하시겠습니까?')) {
       try {
         const res = await fetch('/api/parties', {
           method: 'DELETE',
@@ -281,37 +275,11 @@ export default function PartiesPage() {
           <h2 className="text-xl font-bold mb-4 text-center">새로운 파티 만들기</h2>
           {createMode ? (
             <div className="flex flex-col items-center gap-4">
-              <p className="font-semibold">{createMode} 파티 이름을 입력하세요:</p>
-              <input type="text" value={newPartyName} onChange={(e) => setNewPartyName(e.target.value)} placeholder="함께 게임하실 분!" className="w-full max-w-md px-3 py-2 bg-gray-700 rounded-md" />
-
-              {/* 자유랭크/듀오랭크일 경우 티어 입력 필드 */}
+              <input type="text" value={newPartyName} onChange={(e) => setNewPartyName(e.target.value)} placeholder={`${createMode} 파티 이름`} className="w-full max-w-md px-3 py-2 bg-gray-700 rounded-md" />
               {(createMode === '자유랭크' || createMode === '듀오랭크') && (
-                <div className="w-full max-w-md">
-                  <label htmlFor="requiredTier" className="block text-sm font-medium text-gray-300 mb-1">티어</label>
-                  <input
-                    id="requiredTier"
-                    type="text" // 텍스트 입력으로 변경
-                    value={newPartyRequiredTier}
-                    onChange={(e) => setNewPartyRequiredTier(e.target.value)}
-                    placeholder="예: 솔랭 플래 이상, 플에, 자랭 에메 이상" // 플레이스홀더 변경
-                    className="w-full px-3 py-2 bg-gray-700 rounded-md"
-                  />
-                </div>
+                <input type="text" value={newPartyRequiredTier} onChange={(e) => setNewPartyRequiredTier(e.target.value)} placeholder="필요 티어 (예: 플래 이상)" className="w-full max-w-md px-3 py-2 bg-gray-700 rounded-md" />
               )}
-
-              {/* 파티 시작 시간 입력 필드 */}
-              <div className="w-full max-w-md">
-                <label htmlFor="startTime" className="block text-sm font-medium text-gray-300 mb-1">시작 시간</label>
-                <input
-                  id="startTime"
-                  type="text" // 텍스트 입력으로 변경
-                  value={newPartyStartTime}
-                  onChange={(e) => setNewPartyStartTime(e.target.value)}
-                  placeholder="예: 20시, 지금, 모바시, 다음판" // 플레이스홀더 변경
-                  className="w-full px-3 py-2 bg-gray-700 rounded-md"
-                />
-              </div>
-
+              <input type="text" value={newPartyStartTime} onChange={(e) => setNewPartyStartTime(e.target.value)} placeholder="시작 시간 (예: 20시, 지금)" className="w-full max-w-md px-3 py-2 bg-gray-700 rounded-md" />
               <div className="flex gap-4">
                 <button onClick={() => handleCreateParty(createMode)} className="py-2 px-6 bg-green-600 hover:bg-green-700 rounded-md">생성</button>
                 <button onClick={() => setCreateMode(null)} className="py-2 px-6 bg-gray-600 hover:bg-gray-500 rounded-md">취소</button>
@@ -343,110 +311,37 @@ export default function PartiesPage() {
             const leaderEmail = members.length > 0 ? members[0].email : '';
             const leaderNickname = userMap[leaderEmail] || leaderEmail.split('@')[0];
             const isLeader = user?.email === leaderEmail;
-            const isMember = user?.email ? members.some(m => m.email === user.email) : false; // 파티 멤버인지 확인
+            const isMember = user?.email ? members.some(m => m.email === user.email) : false;
             const isInWaitlist = user?.email ? waiting.some(w => w.email === user.email) : false;
             const isFull = members.length >= Number(party.maxMembers);
-            const showPositions = party.partyType !== '기타';
             const isAdmin = profile?.role === '총관리자' || profile?.role === '관리자';
+            const canModifyDetails = isAdmin || isLeader || isMember;
             const canDisband = isAdmin || isLeader;
-
-            // 시간 표시 형식 변환 (옵션)
-            // startTime이 텍스트로 저장되므로, Date 객체로 변환 시도하지 않고 그대로 표시
-            const displayTime = party.startTime && party.startTime.trim() !== '' ? party.startTime : '즉시 시작';
-
+            // --- 오류 해결: showPositions 변수 선언 추가 ---
+            const showPositions = party.partyType !== '기타';
 
             return (
               <div key={party.partyId} className="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col justify-between">
                 <div>
-                  <div className="mb-3 flex items-center gap-2"> {/* flex 추가 */}
-                    <span className={`px-3 py-1 text-xs font-semibold text-white rounded-full ${partyTypeColors[party.partyType] || 'bg-gray-600'}`}>
-                      {party.partyType}
-                    </span>
-                    {/* 티어 표시 (자유랭크/듀오랭크에만) */}
-                    {(party.partyType === '자유랭크' || party.partyType === '듀오랭크') && party.requiredTier && party.requiredTier.trim() !== '' && (
-                        <span className="px-3 py-1 text-xs font-semibold text-white bg-orange-500 rounded-full">
-                            티어: {party.requiredTier}
-                        </span>
+                  <div className="mb-3 flex items-center gap-2 flex-wrap">
+                    <span className={`px-3 py-1 text-xs font-semibold text-white rounded-full ${partyTypeColors[party.partyType] || 'bg-gray-600'}`}>{party.partyType}</span>
+                    {(party.partyType === '자유랭크' || party.partyType === '듀오랭크') && party.requiredTier && (
+                      <span className="px-3 py-1 text-xs font-semibold text-white bg-orange-500 rounded-full">{party.requiredTier}</span>
                     )}
-                    {/* 시간 표시 */}
-                    <span className="ml-auto text-sm text-gray-400">
-                        시간: {displayTime}
-                    </span>
+                    <span className="ml-auto text-sm text-gray-400">⏰ {party.startTime || '즉시 시작'}</span>
                   </div>
 
-                  {/* 파티 이름, 티어, 시간 수정 UI */}
                   {editingPartyId === party.partyId ? (
                     <div className="space-y-2 mb-2 p-3 bg-gray-700 rounded-md">
-                        <label htmlFor={`edit-name-${party.partyId}`} className="block text-sm font-medium text-gray-300">파티 이름:</label>
-                        <input
-                            id={`edit-name-${party.partyId}`}
-                            type="text"
-                            value={editingPartyName}
-                            onChange={(e) => setEditingPartyName(e.target.value)}
-                            className="w-full px-2 py-1 bg-gray-600 rounded-md"
-                        />
-
-                        {(party.partyType === '자유랭크' || party.partyType === '듀오랭크') && (
-                            <>
-                                <label htmlFor={`edit-tier-${party.partyId}`} className="block text-sm font-medium text-gray-300 mt-2">필요 티어:</label>
-                                <input
-                                    id={`edit-tier-${party.partyId}`}
-                                    type="text" // 텍스트 입력으로 변경
-                                    value={editingRequiredTier}
-                                    onChange={(e) => setEditingRequiredTier(e.target.value)}
-                                    placeholder="예: 다이아몬드 4, 골드 이상"
-                                    className="w-full px-2 py-1 bg-gray-600 rounded-md"
-                                />
-                            </>
-                        )}
-
-                        <label htmlFor={`edit-time-${party.partyId}`} className="block text-sm font-medium text-gray-300 mt-2">시작 시간:</label>
-                        <input
-                            id={`edit-time-${party.partyId}`}
-                            type="text" // 텍스트 입력으로 변경
-                            value={editingStartTime}
-                            onChange={(e) => setEditingStartTime(e.target.value)}
-                            placeholder="예: 15시, 지금 바로"
-                            className="w-full px-2 py-1 bg-gray-600 rounded-md"
-                        />
-
-                        <div className="flex gap-2 mt-3">
-                            <button
-                                onClick={() => handleUpdateParty(party.partyId, 'update_details')}
-                                className="bg-green-600 px-3 py-1 rounded-md text-sm"
-                            >
-                                저장
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setEditingPartyId(null);
-                                    setEditingPartyName('');
-                                    setEditingRequiredTier('');
-                                    setEditingStartTime('');
-                                }}
-                                className="bg-gray-600 px-3 py-1 rounded-md text-sm"
-                            >
-                                취소
-                            </button>
-                        </div>
+                      <input type="text" value={editingPartyName} onChange={(e) => setEditingPartyName(e.target.value)} className="w-full px-2 py-1 bg-gray-600 rounded-md" placeholder="파티 이름" />
+                      {(party.partyType === '자유랭크' || party.partyType === '듀오랭크') && (<input type="text" value={editingRequiredTier} onChange={(e) => setEditingRequiredTier(e.target.value)} className="w-full px-2 py-1 bg-gray-600 rounded-md mt-2" placeholder="필요 티어" />)}
+                      <input type="text" value={editingStartTime} onChange={(e) => setEditingStartTime(e.target.value)} className="w-full px-2 py-1 bg-gray-600 rounded-md mt-2" placeholder="시작 시간" />
+                      <div className="flex gap-2 mt-3"><button onClick={() => handleUpdateParty(party.partyId, 'update_details')} className="bg-green-600 px-3 py-1 rounded-md text-sm">저장</button><button onClick={() => setEditingPartyId(null)} className="bg-gray-600 px-3 py-1 rounded-md text-sm">취소</button></div>
                     </div>
                   ) : (
-                    <div className="flex justify-between items-center mb-2">
-                        <h2 className="text-2xl font-bold text-yellow-400 truncate">{party.partyName}</h2>
-                        {/* 수정 버튼 권한 변경: isLeader -> isMember */}
-                        {isMember && (
-                            <button
-                                onClick={() => {
-                                    setEditingPartyId(party.partyId);
-                                    setEditingPartyName(party.partyName);
-                                    setEditingRequiredTier(party.requiredTier || '');
-                                    setEditingStartTime(party.startTime || '');
-                                }}
-                                className="text-xs bg-gray-600 px-2 py-1 rounded-md"
-                            >
-                                수정
-                            </button>
-                        )}
+                    <div className="flex justify-between items-start mb-2">
+                      <h2 className="text-2xl font-bold text-yellow-400 truncate pr-2">{party.partyName}</h2>
+                      {canModifyDetails && (<button onClick={() => { setEditingPartyId(party.partyId); setEditingPartyName(party.partyName); setEditingRequiredTier(party.requiredTier || ''); setEditingStartTime(party.startTime || ''); }} className="text-xs bg-gray-600 px-2 py-1 rounded-md flex-shrink-0">수정</button>)}
                     </div>
                   )}
                   <p className="text-sm text-gray-400 mb-4">파티장: {leaderNickname}</p>
@@ -459,7 +354,7 @@ export default function PartiesPage() {
                           {editingMemberEmail === member.email && showPositions ? (
                             <div>
                               <div className="flex justify-between items-center mb-2"><span className="font-bold">{userMap[member.email] || member.email}</span><div><button onClick={() => handleUpdateParty(party.partyId, 'update_positions')} className="bg-green-600 text-xs px-2 py-1 rounded">저장</button><button onClick={() => setEditingMemberEmail(null)} className="bg-gray-600 text-xs px-2 py-1 rounded ml-1">취소</button></div></div>
-                              <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-600">{POSITIONS.map(pos => { const isSelected = editingPositions.includes(pos); const isDisabled = editingPositions.includes('ALL') && pos !== 'ALL'; return (<button key={pos} onClick={() => handlePositionChange(pos, setEditingPositions)} disabled={isDisabled} className={`px-2 py0.5 text-xs rounded-full ${isSelected ? 'bg-green-500' : 'bg-gray-600'} ${isDisabled ? 'opacity-50' : ''}`}>{pos}</button>); })}</div>
+                              <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-600">{POSITIONS.map(pos => { const isSelected = editingPositions.includes(pos); const isDisabled = editingPositions.includes('ALL') && pos !== 'ALL'; return (<button key={pos} onClick={() => handlePositionChange(pos, setEditingPositions)} disabled={isDisabled} className={`px-2 py-0.5 text-xs rounded-full ${isSelected ? 'bg-green-500' : 'bg-gray-600'} ${isDisabled ? 'opacity-50' : ''}`}>{pos}</button>); })}</div>
                             </div>
                           ) : (
                             <div className="flex justify-between items-center">
