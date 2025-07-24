@@ -13,8 +13,10 @@ interface Applicant {
     tier: string;
     positions: string[];
     champion?: string; // 챔피언 필드는 경기 중/종료 시에만 사용될 수 있음
+    assignedPosition?: string; // <-- 추가: 플레이어가 할당된 실제 포지션 슬롯 (클라이언트에서만 사용)
 }
 
+// ScrimData 타입: matchChampionHistory 필드 포함
 interface ScrimData {
     scrimId: string;
     scrimName: string;
@@ -28,7 +30,12 @@ interface ScrimData {
     redTeam: Applicant[];
     winningTeam?: 'blue' | 'red';
     scrimType: string;
-    usedChampions?: string[]; // 피어리스 내전에서 사용된 챔피언 목록
+    matchChampionHistory?: { // 각 경기의 챔피언 사용 기록을 담을 배열
+        matchId: string; // 각 경기 기록의 고유 ID (서버에서 추가)
+        matchDate: string; // 클라이언트에서는 ISO string으로 받음
+        blueTeamChampions: { playerEmail: string; champion: string; position: string; }[];
+        redTeamChampions: { playerEmail: string; champion: string; position: string; }[];
+    }[];
 }
 
 interface UserProfile {
@@ -272,8 +279,7 @@ export default function ScrimDetailPage() {
     const [championSelections, setChampionSelections] = useState<{ [email: string]: string }>({});
     const [allChampionNames, setAllChampionNames] = useState<Set<string>>(new Set());
 
-    // 피어리스 내전에서 사용된 챔피언 목록 상태
-    const [usedChampionsInPeerless, setUsedChampionsInPeerless] = useState<string[]>([]);
+    // usedChampionsInPeerless 상태는 이제 필요 없습니다. scrim.matchChampionHistory를 직접 사용합니다.
 
 
     const fetchData = useCallback(async () => {
@@ -335,12 +341,8 @@ export default function ScrimDetailPage() {
             });
             setChampionSelections(newChampionSelections);
 
-            // 피어리스 챔피언 목록 상태 업데이트
-            if (scrim.scrimType === '피어리스' && scrim.usedChampions) {
-                setUsedChampionsInPeerless(scrim.usedChampions);
-            } else {
-                setUsedChampionsInPeerless([]); // 피어리스가 아니거나 목록이 없으면 비움
-            }
+            // usedChampionsInPeerless 상태는 제거되었으므로, 관련 로직도 제거.
+            // scrim.matchChampionHistory를 직접 사용합니다.
 
             if (scrim.status === '팀 구성중' || scrim.status === '경기중' || scrim.status === '종료') {
                 const newBlueTeamSlots: Record<string, Applicant | null> = { ...initialTeamState };
@@ -389,8 +391,6 @@ export default function ScrimDetailPage() {
                 setBlueTeamSlots(newBlueTeamSlots);
                 setRedTeamSlots(newRedTeamSlots);
 
-                // 서버에서 'reset_to_team_building' 시 `applicants`를 비우도록 했으므로,
-                // 여기서는 단순히 서버에서 받아온 `scrim.applicants`를 `applicants` 상태로 설정합니다.
                 setApplicants(scrim.applicants || []); 
 
             } else { // scrim.status === '모집중'
@@ -439,13 +439,32 @@ export default function ScrimDetailPage() {
             }
             body.teams = { blueTeam: blueTeamArray, redTeam: redTeamArray }; 
         } else if (action === 'end_game') {
-            const allPlayers = [...(scrim?.blueTeam || []), ...(scrim?.redTeam || [])];
+            // 현재 팀 슬롯의 플레이어 정보를 사용하여 championData를 구성합니다.
+            // 이렇게 하면 'assignedPosition'을 서버로 정확하게 보낼 수 있습니다.
+            const blueTeamPlayersInSlots = Object.keys(blueTeamSlots)
+                .filter(pos => blueTeamSlots[pos] !== null)
+                .map(pos => ({
+                    ...blueTeamSlots[pos]!, // Applicant 객체
+                    champion: championSelections[blueTeamSlots[pos]!.email] || '미입력',
+                    team: 'blue',
+                    assignedPosition: pos // <-- 이 부분이 핵심: 슬롯의 포지션 이름을 추가
+                }));
 
+            const redTeamPlayersInSlots = Object.keys(redTeamSlots)
+                .filter(pos => redTeamSlots[pos] !== null)
+                .map(pos => ({
+                    ...redTeamSlots[pos]!, // Applicant 객체
+                    champion: championSelections[redTeamSlots[pos]!.email] || '미입력',
+                    team: 'red',
+                    assignedPosition: pos // <-- 이 부분이 핵심: 슬롯의 포지션 이름을 추가
+                }));
+
+            // 챔피언 유효성 검사는 이제 이 새로 구성된 배열을 사용합니다.
+            const allPlayersForChampionValidation = [...blueTeamPlayersInSlots, ...redTeamPlayersInSlots];
             const invalidChampionPlayers: string[] = [];
-            allPlayers.forEach(player => {
-                const selectedChampion = championSelections[player.email]?.trim();
-                // 비어있지 않은 경우에만, 유효한 챔피언 이름인지 검사
-                if (selectedChampion && !allChampionNames.has(selectedChampion.toLowerCase())) {
+            allPlayersForChampionValidation.forEach(player => {
+                const selectedChampion = player.champion?.trim(); // 이미 champion 필드가 추가됨
+                if (selectedChampion && selectedChampion !== '미입력' && !allChampionNames.has(selectedChampion.toLowerCase())) {
                     invalidChampionPlayers.push(player.nickname || player.email);
                 }
             });
@@ -456,8 +475,8 @@ export default function ScrimDetailPage() {
 
             body.winningTeam = payload.winningTeam;
             body.championData = {
-                blueTeam: scrim?.blueTeam.map(p => ({ ...p, champion: championSelections[p.email] || '미입력', team: 'blue' })),
-                redTeam: scrim?.redTeam.map(p => ({ ...p, champion: championSelections[p.email] || '미입력', team: 'red' })),
+                blueTeam: blueTeamPlayersInSlots, // 새로 구성된 배열 전송
+                redTeam: redTeamPlayersInSlots,   // 새로 구성된 배열 전송
             };
         } else if (action === 'reset_to_team_building') {
             if (!confirm('경기를 팀 구성 상태로 되돌리시겠습니까? 경기 기록은 유지됩니다.')) {
@@ -832,18 +851,56 @@ export default function ScrimDetailPage() {
                         </div>
                     </div>
                     {/* 피어리스 내전에서 사용된 챔피언 목록 표시 (경기중) */}
-                    {scrim.scrimType === '피어리스' && usedChampionsInPeerless.length > 0 && (
+                    {scrim.scrimType === '피어리스' && scrim.matchChampionHistory && scrim.matchChampionHistory.length > 0 && (
                         <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-yellow-700">
                             <h3 className="text-xl font-bold mb-3 text-center text-yellow-400">
-                                사용된 챔피언 ({usedChampionsInPeerless.length}개)
+                                사용된 챔피언 기록
                             </h3>
-                            <div className="flex flex-wrap gap-2 justify-center">
-                                {usedChampionsInPeerless.map(champion => (
-                                    <span key={champion} className="bg-orange-700 text-white text-sm px-3 py-1 rounded-full">
-                                        {champion}
-                                    </span>
-                                ))}
-                            </div>
+                            {scrim.matchChampionHistory.map((matchRecord, index) => {
+                                // 포지션 정렬 헬퍼 함수 정의 (컴포넌트 외부에 정의하는 것이 더 효율적)
+                                const getPositionSortOrder = (position: string) => {
+                                    const posIndex = POSITIONS.indexOf(position);
+                                    // POSITIONS에 없는 포지션은 가장 뒤로 보냅니다.
+                                    return posIndex === -1 ? POSITIONS.length : posIndex; 
+                                };
+
+                                return (
+                                <div key={matchRecord.matchId || index} className="mb-4 p-3 bg-gray-700 rounded-md">
+                                    <p className="text-gray-400 text-sm mb-2">
+                                        경기 {scrim.matchChampionHistory!.length - index} ({new Date(matchRecord.matchDate).toLocaleString()})
+                                    </p>
+                                    <div className="flex flex-wrap justify-between gap-4">
+                                        {/* 블루팀 챔피언 */}
+                                        <div className="w-full md:w-[calc(50%-0.5rem)]">
+                                            <h4 className="text-blue-300 font-semibold mb-1">블루팀</h4>
+                                            <div className="space-y-1">
+                                                {matchRecord.blueTeamChampions
+                                                    .sort((a, b) => getPositionSortOrder(a.position) - getPositionSortOrder(b.position)) // 포지션 순서대로 정렬
+                                                    .map(champData => (
+                                                        <span key={champData.playerEmail} className="block text-sm">
+                                                            {userMap[champData.playerEmail] || champData.playerEmail.split('@')[0]}: <span className="font-bold text-yellow-400">{champData.champion}</span>
+                                                            <span className="text-gray-400 ml-1 text-xs">({champData.position})</span>
+                                                        </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {/* 레드팀 챔피언 */}
+                                        <div className="w-full md:w-[calc(50%-0.5rem)]">
+                                            <h4 className="text-red-300 font-semibold mb-1">레드팀</h4>
+                                            <div className="space-y-1">
+                                                {matchRecord.redTeamChampions
+                                                    .sort((a, b) => getPositionSortOrder(a.position) - getPositionSortOrder(b.position)) // 포지션 순서대로 정렬
+                                                    .map(champData => (
+                                                        <span key={champData.playerEmail} className="block text-sm">
+                                                            {userMap[champData.playerEmail] || champData.playerEmail.split('@')[0]}: <span className="font-bold text-yellow-400">{champData.champion}</span>
+                                                            {champData.position && <span className="text-gray-400 ml-1 text-xs">({champData.position})</span>}
+                                                        </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )})}
                         </div>
                     )}
 
@@ -1046,18 +1103,56 @@ export default function ScrimDetailPage() {
                         </div>
                     </div>
                     {/* 피어리스 내전에서 사용된 챔피언 목록 표시 (종료) */}
-                    {scrim.scrimType === '피어리스' && usedChampionsInPeerless.length > 0 && (
+                    {scrim.scrimType === '피어리스' && scrim.matchChampionHistory && scrim.matchChampionHistory.length > 0 && (
                         <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-yellow-700">
                             <h3 className="text-xl font-bold mb-3 text-center text-yellow-400">
-                                사용된 챔피언 ({usedChampionsInPeerless.length}개)
+                                사용된 챔피언 기록
                             </h3>
-                            <div className="flex flex-wrap gap-2 justify-center">
-                                {usedChampionsInPeerless.map(champion => (
-                                    <span key={champion} className="bg-orange-700 text-white text-sm px-3 py-1 rounded-full">
-                                        {champion}
-                                    </span>
-                                ))}
-                            </div>
+                            {scrim.matchChampionHistory.map((matchRecord, index) => {
+                                // 포지션 정렬 헬퍼 함수 정의 (컴포넌트 외부에 정의하는 것이 더 효율적)
+                                const getPositionSortOrder = (position: string) => {
+                                    const posIndex = POSITIONS.indexOf(position);
+                                    // POSITIONS에 없는 포지션은 가장 뒤로 보냅니다.
+                                    return posIndex === -1 ? POSITIONS.length : posIndex; 
+                                };
+
+                                return (
+                                <div key={matchRecord.matchId || index} className="mb-4 p-3 bg-gray-700 rounded-md">
+                                    <p className="text-gray-400 text-sm mb-2">
+                                        경기 {scrim.matchChampionHistory!.length - index} ({new Date(matchRecord.matchDate).toLocaleString()})
+                                    </p>
+                                    <div className="flex flex-wrap justify-between gap-4">
+                                        {/* 블루팀 챔피언 */}
+                                        <div className="w-full md:w-[calc(50%-0.5rem)]">
+                                            <h4 className="text-blue-300 font-semibold mb-1">블루팀</h4>
+                                            <div className="space-y-1">
+                                                {matchRecord.blueTeamChampions
+                                                    .sort((a, b) => getPositionSortOrder(a.position) - getPositionSortOrder(b.position)) // 포지션 순서대로 정렬
+                                                    .map(champData => (
+                                                        <span key={champData.playerEmail} className="block text-sm">
+                                                            {userMap[champData.playerEmail] || champData.playerEmail.split('@')[0]}: <span className="font-bold text-yellow-400">{champData.champion}</span>
+                                                            <span className="text-gray-400 ml-1 text-xs">({champData.position})</span>
+                                                        </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {/* 레드팀 챔피언 */}
+                                        <div className="w-full md:w-[calc(50%-0.5rem)]">
+                                            <h4 className="text-red-300 font-semibold mb-1">레드팀</h4>
+                                            <div className="space-y-1">
+                                                {matchRecord.redTeamChampions
+                                                    .sort((a, b) => getPositionSortOrder(a.position) - getPositionSortOrder(b.position)) // 포지션 순서대로 정렬
+                                                    .map(champData => (
+                                                        <span key={champData.playerEmail} className="block text-sm">
+                                                            {userMap[champData.playerEmail] || champData.playerEmail.split('@')[0]}: <span className="font-bold text-yellow-400">{champData.champion}</span>
+                                                            {champData.position && <span className="text-gray-400 ml-1 text-xs">({champData.position})</span>}
+                                                        </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )})}
                         </div>
                     )}
                     {canManage && ( // '종료' 상태에서도 관리 버튼들을 보여주도록 변경

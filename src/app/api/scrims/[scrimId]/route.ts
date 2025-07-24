@@ -11,21 +11,29 @@ interface Applicant {
     champion?: string;
 }
 
-// ScrimData 타입에 usedChampions 필드 추가
+// ScrimData 타입에 matchChampionHistory 필드 추가
 interface ScrimData {
     scrimId: string;
     scrimName: string;
     creatorEmail: string;
     status: string;
-    createdAt: admin.firestore.Timestamp; // Firestore Timestamp 타입
-    startTime: admin.firestore.Timestamp | null; // Firestore Timestamp 타입
+    // Firestore Timestamp는 실제 DB에 저장되는 타입이며, 클라이언트에는 직렬화되어 전달됩니다.
+    createdAt: admin.firestore.Timestamp; 
+    startTime: admin.firestore.Timestamp | null; 
     applicants: Applicant[];
     waitlist: Applicant[];
     blueTeam: Applicant[];
     redTeam: Applicant[];
     winningTeam?: 'blue' | 'red';
     scrimType: string;
-    usedChampions?: string[]; // 피어리스 내전에서 사용된 챔피언 목록
+    
+    // 각 경기의 챔피언 사용 기록을 담을 배열
+    matchChampionHistory?: {
+        matchId: string; // 각 경기 기록의 고유 ID (matches 컬렉션의 문서 ID와 연결)
+        matchDate: admin.firestore.Timestamp | Date; // DB에 Timestamp 또는 Date 객체로 저장
+        blueTeamChampions: { playerEmail: string; champion: string; position: string; }[];
+        redTeamChampions: { playerEmail: string; champion: string; position: string; }[];
+    }[];
 }
 
 // 권한 확인 함수
@@ -61,15 +69,24 @@ export async function GET(
         }
 
         const data = doc.data();
-        // Timestamp 타입을 ISO 문자열로 변환
+        // Timestamp 타입을 ISO 문자열로 변환하여 클라이언트에 전달
         const createdAt = data?.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
         const startTime = data?.startTime?.toDate ? data.startTime.toDate().toISOString() : null;
+
+        // matchChampionHistory의 각 matchDate도 ISO 문자열로 변환
+        const matchChampionHistory = (data?.matchChampionHistory as ScrimData['matchChampionHistory'])?.map(record => ({
+            ...record,
+            // matchDate가 Timestamp 객체라면 toDate().toISOString()으로, 아니라면 그대로 사용 (string으로 이미 변환된 경우)
+            matchDate: (record.matchDate as admin.firestore.Timestamp)?.toDate ? (record.matchDate as admin.firestore.Timestamp).toDate().toISOString() : record.matchDate
+        })) || [];
+
 
         return NextResponse.json({
             scrimId: doc.id,
             ...data,
             createdAt,
             startTime,
+            matchChampionHistory, // 변환된 matchChampionHistory 포함
         });
 
     } catch (error) {
@@ -79,7 +96,7 @@ export async function GET(
 }
 
 
-// PUT: 내전의 모든 상태 변경을 처리하는 통합 함수 (수정된 부분)
+// PUT: 내전의 모든 상태 변경을 처리하는 통합 함수
 export async function PUT(
     request: NextRequest,
     { params }: { params: { scrimId: string | string[] } }
@@ -108,31 +125,32 @@ export async function PUT(
                 throw new Error("경기를 종료할 권한이 없습니다.");
             }
 
-            // 1. match 기록 생성
+            // 1. match 기록 생성 (매치 ID를 얻기 위해 먼저 추가)
+            const newMatchDocRef = db.collection('matches').doc(); // 문서 ID 미리 생성
             const matchData = {
                 scrimId,
                 winningTeam,
-                matchDate: data?.startTime,
+                matchDate: admin.firestore.FieldValue.serverTimestamp(), // 경기 종료 시점의 서버 타임스탬프
                 blueTeam: championData.blueTeam,
                 redTeam: championData.redTeam,
             };
-            await db.collection('matches').add(matchData);
+            await newMatchDocRef.set(matchData); // 문서 추가
 
             // 2. 각 유저 전적 업데이트 및 내전 상태 '종료'로 변경 (하나의 트랜잭션으로 통합)
             await db.runTransaction(async (transaction) => {
                 // 트랜잭션 내에서 모든 필요한 문서 읽기
                 const scrimDoc = await transaction.get(scrimRef); // 내전 문서 읽기
                 const currentScrimData = scrimDoc.data() as ScrimData; // 현재 내전 데이터
-            
+
                 const allPlayers = [...championData.blueTeam, ...championData.redTeam];
-            
-                // userDocsInfoPromises가 반환하는 객체의 타입을 명확히 정의합니다.
+
+                // userDocsInfoPromises가 반환하는 객체의 타입을 명확히 정의
                 interface UserDocInfo {
                     userDocRef: admin.firestore.DocumentReference;
-                    userData: any; // Firestore 문서 데이터는 any로 처리하거나 더 구체적인 타입 정의 필요
+                    userData: any; 
                     player: Applicant & { team: string };
                 }
-            
+
                 const userDocsInfoPromises = allPlayers.map(async (player) => {
                     const userQuery = db.collection('users').where('email', '==', player.email).limit(1);
                     const userQuerySnapshot = await transaction.get(userQuery); 
@@ -140,41 +158,55 @@ export async function PUT(
                     if (!userQuerySnapshot.empty) {
                         const userDocRef = userQuerySnapshot.docs[0].ref;
                         const userDoc = await transaction.get(userDocRef);
-                        // userDoc.data()가 undefined일 가능성을 대비하여 기본 객체 {} 제공
-                        return { userDocRef, userData: userDoc.data() || {}, player } as UserDocInfo; // <-- 여기서 타입을 명시적으로 캐스팅
+                        return { userDocRef, userData: userDoc.data() || {}, player } as UserDocInfo;
                     }
                     return null; // 사용자를 찾지 못한 경우
                 });
-            
-                // 필터링 후에도 타입이 UserDocInfo[]로 확실히 추론되도록 보강
-                const userDocsToUpdate: UserDocInfo[] = (await Promise.all(userDocsInfoPromises)).filter((info): info is UserDocInfo => info !== null); // <-- 필터링 방식 수정
-            
-            
-                // --- 피어리스 로직 (변경 없음) ---
-                let updatedUsedChampions: string[] = currentScrimData.usedChampions || [];
+
+                // Promise.all로 모든 사용자 문서 읽기 완료 후 null 값 제거
+                const userDocsToUpdate: UserDocInfo[] = (await Promise.all(userDocsInfoPromises)).filter((info): info is UserDocInfo => info !== null); 
+
+                // --- 피어리스 로직 추가 시작 ---
+                let updatedMatchChampionHistory: ScrimData['matchChampionHistory'] = currentScrimData.matchChampionHistory || [];
+
                 if (currentScrimData.scrimType === '피어리스') {
-                    const newlyUsedChampions = championData.blueTeam.map((p: any) => p.champion).filter((c: string) => c && c.trim() !== '')
-                        .concat(championData.redTeam.map((p: any) => p.champion).filter((c: string) => c && c.trim() !== ''));
+                    const blueTeamChampsForHistory = championData.blueTeam.map((p: any) => ({
+                        playerEmail: p.email,
+                        champion: p.champion && p.champion.trim() !== '' ? p.champion : '미입력',
+                        position: p.positions[0]?.split('(')[0].trim() || '', // 포지션 정보도 저장
+                    }));
+                    const redTeamChampsForHistory = championData.redTeam.map((p: any) => ({
+                        playerEmail: p.email,
+                        champion: p.champion && p.champion.trim() !== '' ? p.champion : '미입력',
+                        position: p.positions[0]?.split('(')[0].trim() || '',
+                    }));
                     
-                    updatedUsedChampions = Array.from(new Set([...updatedUsedChampions, ...newlyUsedChampions]));
+                    // 새로운 경기 챔피언 기록 객체 (matchId로 고유성을 보장)
+                    const newMatchChampionsRecord = {
+                        matchId: newMatchDocRef.id, // 새로 생성된 match 문서의 ID를 사용
+                        matchDate: new Date(), // <-- 'FieldValue.serverTimestamp()' 대신 'new Date()' 사용
+                        blueTeamChampions: blueTeamChampsForHistory,
+                        redTeamChampions: redTeamChampsForHistory,
+                    };
+                    
+                    // 기록을 배열 맨 앞에 추가하여 최신 경기가 먼저 보이도록 합니다.
+                    updatedMatchChampionHistory = [newMatchChampionsRecord, ...updatedMatchChampionHistory];
                 }
-                // --- 피어리스 로직 끝 ---
-            
-            
+                // --- 피어리스 로직 추가 끝 ---
+
+
                 // 모든 읽기 작업이 완료된 후, 이제 쓰기 작업 실행
                 
                 // 챔피언 통계 및 전적 업데이트
                 for (const userDocInfo of userDocsToUpdate) {
-                    // 구조 분해 할당 시 userDocInfo가 null이 아님을 TypeScript에 알림
-                    // (위 filter(Boolean) 대신 filter((info): info is UserDocInfo => info !== null)을 사용하면 더 안전)
-                    const { userDocRef, userData, player } = userDocInfo; // <-- 이 라인에서 에러가 나면, 이제 타입이 더 확실해집니다.
+                    const { userDocRef, userData, player } = userDocInfo;
                     
                     const championName = player.champion && player.champion.trim() !== '' ? player.champion : '미입력';
                 
                     const isWinner = (player.team === 'blue' && winningTeam === 'blue') || (player.team === 'red' && winningTeam === 'red');
                     const resultKey = isWinner ? 'wins' : 'losses';
                 
-                    const newChampionStats = userData?.championStats || {}; // userData가 {}일 수 있으므로 안전한 접근
+                    const newChampionStats = userData?.championStats || {};
                     
                     if (!newChampionStats[championName]) {
                         newChampionStats[championName] = { wins: 0, losses: 0 };
@@ -194,7 +226,7 @@ export async function PUT(
                     winningTeam: winningTeam,
                     blueTeam: championData.blueTeam,
                     redTeam: championData.redTeam,
-                    usedChampions: updatedUsedChampions, // 사용된 챔피언 목록 저장
+                    matchChampionHistory: updatedMatchChampionHistory, // 새 필드 업데이트
                 });
             });
         } else {
@@ -211,6 +243,7 @@ export async function PUT(
                 let redTeam: Applicant[] = (data?.redTeam || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
 
                 let hasPermission = true;
+                // 'reset_peerless' 액션도 권한 확인 대상에 포함
                 if (['start_team_building', 'update_teams', 'start_game', 'reset_to_team_building', 'reset_to_recruiting', 'remove_member', 'reset_peerless'].includes(action)) {
                     const isAdmin = await checkAdminPermission(userEmail);
                     if (!isAdmin && data?.creatorEmail !== userEmail) {
@@ -247,22 +280,16 @@ export async function PUT(
                         transaction.update(scrimRef, { status: '팀 구성중' });
                         break;
                     case 'update_teams':
-                        // 이 액션은 프론트엔드에서 팀 변경 사항이 발생할 때 호출될 수 있습니다.
-                        // 하지만 현재 드래그앤드롭 로직은 클라이언트 상태에서 관리되므로
-                        // 이 액션이 사용되지 않을 수도 있습니다.
-                        // 만약 팀 변경을 DB에 즉시 반영하고 싶다면 이 로직을 활용하세요.
                         transaction.update(scrimRef, { blueTeam: teams.blueTeam, redTeam: teams.redTeam });
                         break;
                     case 'start_game':
-                        // '경기중'으로 상태를 변경하고, 최종 팀 구성을 DB에 저장합니다.
-                        // applicants와 waitlist는 경기 시작과 함께 비웁니다.
                         transaction.update(scrimRef, {
                             status: '경기중',
                             startTime: admin.firestore.FieldValue.serverTimestamp(),
-                            blueTeam: teams.blueTeam, // 현재 구성된 블루팀 저장
-                            redTeam: teams.redTeam,  // 현재 구성된 레드팀 저장
-                            applicants: [], // 경기 시작 시 참가자 목록을 비움
-                            waitlist: [],   // 경기 시작 시 대기열 목록을 비움
+                            blueTeam: teams.blueTeam, 
+                            redTeam: teams.redTeam,  
+                            applicants: [], 
+                            waitlist: [],   
                         });
                         break;
                     case 'reset_to_team_building':
@@ -271,12 +298,11 @@ export async function PUT(
                         // applicants와 waitlist는 비웁니다.
                         transaction.update(scrimRef, {
                             status: '팀 구성중',
-                            // blueTeam과 redTeam은 변경 없이 그대로 둡니다. (플레이어 유지)
-                            applicants: [], // 모집중 풀은 비웁니다.
-                            waitlist: [],   // 대기열도 비웁니다.
-                            winningTeam: admin.firestore.FieldValue.delete(), // 경기 결과 삭제
-                            startTime: admin.firestore.FieldValue.delete(),   // 시작 시간 삭제
-                            // usedChampions는 피어리스 초기화 액션에서만 변경됩니다.
+                            applicants: [], 
+                            waitlist: [],   
+                            winningTeam: admin.firestore.FieldValue.delete(), 
+                            startTime: admin.firestore.FieldValue.delete(),   
+                            // matchChampionHistory는 reset_peerless에서만 변경되도록 유지됩니다.
                         });
                         break;
                     case 'reset_to_recruiting':
@@ -289,32 +315,28 @@ export async function PUT(
                         
                         transaction.update(scrimRef, {
                             status: '모집중',
-                            applicants: uniqueApplicantsForRecruiting, // 모든 참가자를 applicants로 통합
-                            blueTeam: [], // 팀 슬롯 비움
-                            redTeam: [],  // 팀 슬롯 비움
-                            waitlist: [], // 대기열도 비울 수 있습니다 (선택 사항)
-                            winningTeam: admin.firestore.FieldValue.delete(), // 혹시 남아있을 경기 결과 삭제
-                            startTime: admin.firestore.FieldValue.delete(),   // 혹시 남아있을 시작 시간 삭제
-                            // usedChampions는 피어리스 초기화 액션에서만 변경됩니다.
+                            applicants: uniqueApplicantsForRecruiting, 
+                            blueTeam: [], 
+                            redTeam: [],  
+                            waitlist: [], 
+                            winningTeam: admin.firestore.FieldValue.delete(), 
+                            startTime: admin.firestore.FieldValue.delete(),   
+                            // matchChampionHistory는 reset_peerless에서만 변경되도록 유지됩니다.
                         });
                         break;
-                    case 'reset_peerless': // 새로운 액션 추가: 피어리스 챔피언 목록 초기화
+                    case 'reset_peerless': 
                         if (data?.scrimType !== '피어리스') {
                             throw new Error("이 내전은 피어리스 내전이 아닙니다.");
                         }
-                        // 권한 확인 (관리자 또는 내전 생성자만 가능)
                         const isAdminOrCreator = await checkAdminPermission(userEmail) || data?.creatorEmail === userEmail;
                         if (!isAdminOrCreator) {
                             throw new Error("피어리스 챔피언 목록을 초기화할 권한이 없습니다.");
                         }
-                        // usedChampions 필드를 비웁니다.
                         transaction.update(scrimRef, {
-                            usedChampions: [],
-                            // 피어리스 초기화 시 내전 상태는 그대로 유지합니다. (필요하다면 추가 변경 가능)
+                            matchChampionHistory: [], // 사용된 챔피언 기록 전체 초기화
                         });
                         break;
                     case 'remove_member':
-                        // 특정 멤버를 모든 목록에서 제거합니다.
                         const filteredApplicants = applicants.filter((a) => a.email !== memberEmailToRemove);
                         const filteredBlueTeam = blueTeam.filter((p) => p.email !== memberEmailToRemove);
                         const filteredRedTeam = redTeam.filter((p) => p.email !== memberEmailToRemove);
