@@ -9,6 +9,8 @@ interface Applicant {
     tier: string;
     positions: string[];
     champion?: string;
+    // 클라이언트에서 전송하는 assignedPosition 필드를 서버에서도 인식하도록 추가
+    assignedPosition?: string;
 }
 
 // ScrimData 타입에 matchChampionHistory 필드 추가
@@ -18,15 +20,15 @@ interface ScrimData {
     creatorEmail: string;
     status: string;
     // Firestore Timestamp는 실제 DB에 저장되는 타입이며, 클라이언트에는 직렬화되어 전달됩니다.
-    createdAt: admin.firestore.Timestamp; 
-    startTime: admin.firestore.Timestamp | null; 
+    createdAt: admin.firestore.Timestamp;
+    startTime: admin.firestore.Timestamp | null;
     applicants: Applicant[];
     waitlist: Applicant[];
     blueTeam: Applicant[];
     redTeam: Applicant[];
     winningTeam?: 'blue' | 'red';
     scrimType: string;
-    
+
     // 각 경기의 챔피언 사용 기록을 담을 배열
     matchChampionHistory?: {
         matchId: string; // 각 경기 기록의 고유 ID (matches 컬렉션의 문서 ID와 연결)
@@ -118,7 +120,7 @@ export async function PUT(
             const doc = await scrimRef.get();
             if (!doc.exists) throw new Error("내전을 찾을 수 없습니다.");
             // ScrimData 타입으로 명시적으로 캐스팅
-            const data = doc.data() as ScrimData; 
+            const data = doc.data() as ScrimData;
 
             const isAdmin = await checkAdminPermission(userEmail);
             if (!isAdmin && data?.creatorEmail !== userEmail) {
@@ -147,14 +149,14 @@ export async function PUT(
                 // userDocsInfoPromises가 반환하는 객체의 타입을 명확히 정의
                 interface UserDocInfo {
                     userDocRef: admin.firestore.DocumentReference;
-                    userData: any; 
-                    player: Applicant & { team: string };
+                    userData: any;
+                    player: Applicant & { team: string; assignedPosition?: string; }; // assignedPosition 타입 추가
                 }
 
                 const userDocsInfoPromises = allPlayers.map(async (player) => {
                     const userQuery = db.collection('users').where('email', '==', player.email).limit(1);
-                    const userQuerySnapshot = await transaction.get(userQuery); 
-                    
+                    const userQuerySnapshot = await transaction.get(userQuery);
+
                     if (!userQuerySnapshot.empty) {
                         const userDocRef = userQuerySnapshot.docs[0].ref;
                         const userDoc = await transaction.get(userDocRef);
@@ -164,31 +166,33 @@ export async function PUT(
                 });
 
                 // Promise.all로 모든 사용자 문서 읽기 완료 후 null 값 제거
-                const userDocsToUpdate: UserDocInfo[] = (await Promise.all(userDocsInfoPromises)).filter((info): info is UserDocInfo => info !== null); 
+                const userDocsToUpdate: UserDocInfo[] = (await Promise.all(userDocsInfoPromises)).filter((info): info is UserDocInfo => info !== null);
 
                 // --- 피어리스 로직 추가 시작 ---
                 let updatedMatchChampionHistory: ScrimData['matchChampionHistory'] = currentScrimData.matchChampionHistory || [];
 
                 if (currentScrimData.scrimType === '피어리스') {
-                    const blueTeamChampsForHistory = championData.blueTeam.map((p: any) => ({
+                    // 클라이언트에서 전송한 assignedPosition 값을 사용하도록 수정
+                    const blueTeamChampsForHistory = championData.blueTeam.map((p: Applicant) => ({
                         playerEmail: p.email,
                         champion: p.champion && p.champion.trim() !== '' ? p.champion : '미입력',
-                        position: p.positions[0]?.split('(')[0].trim() || '', // 포지션 정보도 저장
+                        // p.assignedPosition이 있다면 사용하고, 없다면 기존 p.positions[0]에서 추출
+                        position: p.assignedPosition || p.positions[0]?.split('(')[0].trim() || '',
                     }));
-                    const redTeamChampsForHistory = championData.redTeam.map((p: any) => ({
+                    const redTeamChampsForHistory = championData.redTeam.map((p: Applicant) => ({
                         playerEmail: p.email,
                         champion: p.champion && p.champion.trim() !== '' ? p.champion : '미입력',
-                        position: p.positions[0]?.split('(')[0].trim() || '',
+                        position: p.assignedPosition || p.positions[0]?.split('(')[0].trim() || '',
                     }));
-                    
+
                     // 새로운 경기 챔피언 기록 객체 (matchId로 고유성을 보장)
                     const newMatchChampionsRecord = {
                         matchId: newMatchDocRef.id, // 새로 생성된 match 문서의 ID를 사용
-                        matchDate: new Date(), // <-- 'FieldValue.serverTimestamp()' 대신 'new Date()' 사용
+                        matchDate: new Date(), // 'FieldValue.serverTimestamp()' 대신 'new Date()' 사용
                         blueTeamChampions: blueTeamChampsForHistory,
                         redTeamChampions: redTeamChampsForHistory,
                     };
-                    
+
                     // 기록을 배열 맨 앞에 추가하여 최신 경기가 먼저 보이도록 합니다.
                     updatedMatchChampionHistory = [newMatchChampionsRecord, ...updatedMatchChampionHistory];
                 }
@@ -196,30 +200,30 @@ export async function PUT(
 
 
                 // 모든 읽기 작업이 완료된 후, 이제 쓰기 작업 실행
-                
+
                 // 챔피언 통계 및 전적 업데이트
                 for (const userDocInfo of userDocsToUpdate) {
                     const { userDocRef, userData, player } = userDocInfo;
-                    
+
                     const championName = player.champion && player.champion.trim() !== '' ? player.champion : '미입력';
-                
+
                     const isWinner = (player.team === 'blue' && winningTeam === 'blue') || (player.team === 'red' && winningTeam === 'red');
                     const resultKey = isWinner ? 'wins' : 'losses';
-                
+
                     const newChampionStats = userData?.championStats || {};
-                    
+
                     if (!newChampionStats[championName]) {
                         newChampionStats[championName] = { wins: 0, losses: 0 };
                     }
-                    
+
                     newChampionStats[championName][resultKey] += 1;
-                    
+
                     transaction.update(userDocRef, {
                         championStats: newChampionStats,
                         totalScrimsPlayed: admin.firestore.FieldValue.increment(1),
                     });
                 }
-                
+
                 // 내전 상태 '종료'로 변경 및 사용된 챔피언 목록 업데이트 (트랜잭션 내에서 처리)
                 transaction.update(scrimRef, {
                     status: '종료',
@@ -234,7 +238,7 @@ export async function PUT(
             await db.runTransaction(async (transaction) => {
                 const doc = await transaction.get(scrimRef);
                 if (!doc.exists) throw new Error("내전을 찾을 수 없습니다.");
-                
+
                 const data = doc.data() as ScrimData; // ScrimData 타입으로 명시적으로 캐스팅
                 // Firestore에서 받아온 데이터를 타입 가드와 기본값으로 안전하게 초기화
                 let applicants: Applicant[] = (data?.applicants || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
@@ -286,45 +290,40 @@ export async function PUT(
                         transaction.update(scrimRef, {
                             status: '경기중',
                             startTime: admin.firestore.FieldValue.serverTimestamp(),
-                            blueTeam: teams.blueTeam, 
-                            redTeam: teams.redTeam,  
-                            applicants: [], 
-                            waitlist: [],   
+                            blueTeam: teams.blueTeam,
+                            redTeam: teams.redTeam,
+                            applicants: [],
+                            waitlist: [],
                         });
                         break;
                     case 'reset_to_team_building':
-                        // '경기중' 또는 '종료'에서 '팀 구성중'으로 되돌릴 때
-                        // 기존에 구성된 블루팀과 레드팀은 그대로 유지합니다.
-                        // applicants와 waitlist는 비웁니다.
                         transaction.update(scrimRef, {
                             status: '팀 구성중',
-                            applicants: [], 
-                            waitlist: [],   
-                            winningTeam: admin.firestore.FieldValue.delete(), 
-                            startTime: admin.firestore.FieldValue.delete(),   
-                            // matchChampionHistory는 reset_peerless에서만 변경되도록 유지됩니다.
+                            applicants: [],
+                            waitlist: [],
+                            winningTeam: admin.firestore.FieldValue.delete(),
+                            startTime: admin.firestore.FieldValue.delete(),
+                            // matchChampionHistory는 reset_peerless에서만 변경되도록 유지
                         });
                         break;
                     case 'reset_to_recruiting':
-                        // '팀 구성중' 또는 '경기중'에서 '모집중'으로 되돌릴 때
-                        // 모든 현재 참가자 (applicants, blueTeam, redTeam)를 모아서 applicants로 통합합니다.
                         const allCurrentPlayersForRecruiting = [...applicants, ...blueTeam, ...redTeam];
                         const uniquePlayersForRecruitingMap = new Map<string, Applicant>();
                         allCurrentPlayersForRecruiting.forEach(player => uniquePlayersForRecruitingMap.set(player.email, player));
                         const uniqueApplicantsForRecruiting = Array.from(uniquePlayersForRecruitingMap.values());
-                        
+
                         transaction.update(scrimRef, {
                             status: '모집중',
-                            applicants: uniqueApplicantsForRecruiting, 
-                            blueTeam: [], 
-                            redTeam: [],  
-                            waitlist: [], 
-                            winningTeam: admin.firestore.FieldValue.delete(), 
-                            startTime: admin.firestore.FieldValue.delete(),   
-                            // matchChampionHistory는 reset_peerless에서만 변경되도록 유지됩니다.
+                            applicants: uniqueApplicantsForRecruiting,
+                            blueTeam: [],
+                            redTeam: [],
+                            waitlist: [],
+                            winningTeam: admin.firestore.FieldValue.delete(),
+                            startTime: admin.firestore.FieldValue.delete(),
+                            // matchChampionHistory는 reset_peerless에서만 변경되도록 유지
                         });
                         break;
-                    case 'reset_peerless': 
+                    case 'reset_peerless':
                         if (data?.scrimType !== '피어리스') {
                             throw new Error("이 내전은 피어리스 내전이 아닙니다.");
                         }
