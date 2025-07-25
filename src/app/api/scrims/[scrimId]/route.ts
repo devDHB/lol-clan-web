@@ -280,9 +280,34 @@ export async function PUT(
                         transaction.update(scrimRef, { waitlist: newWaitlistAfterLeave });
                         break;
                     case 'start_team_building':
-                        if (applicants.length < 10) throw new Error("팀 구성을 시작하려면 최소 10명의 참가자가 필요합니다.");
-                        transaction.update(scrimRef, { status: '팀 구성중' });
+                        if (applicants.length < 10) {
+                            throw new Error("팀 구성을 시작하려면 최소 10명의 참가자가 필요합니다.");
+                        }
+
+                        // ⭐️ [핵심 로직] 칼바람 모드일 경우 자동 랜덤 분배 ⭐️
+                        if (data.scrimType === '칼바람') {
+                            // 참가자 배열 복사 후 랜덤으로 섞기 (Fisher-Yates Shuffle)
+                            const shuffledApplicants = [...applicants];
+                            for (let i = shuffledApplicants.length - 1; i > 0; i--) {
+                                const j = Math.floor(Math.random() * (i + 1));
+                                [shuffledApplicants[i], shuffledApplicants[j]] = [shuffledApplicants[j], shuffledApplicants[i]];
+                            }
+
+                            const newBlueTeam = shuffledApplicants.slice(0, 5);
+                            const newRedTeam = shuffledApplicants.slice(5, 10);
+
+                            transaction.update(scrimRef, {
+                                status: '팀 구성중', // 제안대로 '팀 구성중' 상태로 변경
+                                blueTeam: newBlueTeam,
+                                redTeam: newRedTeam,
+                                applicants: [], // 참가자 목록은 비우는 것이 맞습니다.
+                            });
+                        } else {
+                            // 칼바람이 아닌 다른 모드는 기존 로직 유지 (팀 구성중 상태로만 변경)
+                            transaction.update(scrimRef, { status: '팀 구성중' });
+                        }
                         break;
+
                     case 'update_teams':
                         transaction.update(scrimRef, { blueTeam: teams.blueTeam, redTeam: teams.redTeam });
                         break;
@@ -293,7 +318,7 @@ export async function PUT(
                             blueTeam: teams.blueTeam,
                             redTeam: teams.redTeam,
                             applicants: [],
-                            waitlist: [],
+                            // waitlist: [],
                         });
                         break;
                     case 'reset_to_team_building':
@@ -317,7 +342,7 @@ export async function PUT(
                             applicants: uniqueApplicantsForRecruiting,
                             blueTeam: [],
                             redTeam: [],
-                            waitlist: [],
+                            // waitlist: [],
                             winningTeam: admin.firestore.FieldValue.delete(),
                             startTime: admin.firestore.FieldValue.delete(),
                             // matchChampionHistory는 reset_peerless에서만 변경되도록 유지
@@ -358,6 +383,47 @@ export async function PUT(
     } catch (error: unknown) {
         console.error('PUT Scrim API Error:', error);
         const errorMessage = error instanceof Error ? error.message : '내전 관련 작업에 실패했습니다.';
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
+    }
+}
+
+// DELETE: 내전을 해체하는 함수
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: { scrimId: string | string[] } }
+) {
+    try {
+        const scrimId = Array.isArray(params.scrimId) ? params.scrimId[0] : params.scrimId;
+        const { userEmail } = await request.json();
+
+        if (!scrimId || !userEmail) {
+            return NextResponse.json({ error: '내전 ID와 사용자 이메일이 필요합니다.' }, { status: 400 });
+        }
+
+        const scrimRef = db.collection('scrims').doc(scrimId);
+        const doc = await scrimRef.get();
+
+        if (!doc.exists) {
+            return NextResponse.json({ error: '내전을 찾을 수 없습니다.' }, { status: 404 });
+        }
+
+        const data = doc.data();
+        const isAdmin = await checkAdminPermission(userEmail);
+
+        // 생성자 또는 관리자만 해체 가능
+        if (data?.creatorEmail !== userEmail && !isAdmin) {
+            return NextResponse.json({ error: '내전을 해체할 권한이 없습니다.' }, { status: 403 });
+        }
+
+        // Firestore 문서 삭제
+        await scrimRef.delete();
+
+        // 성공적으로 JSON 응답을 반환
+        return NextResponse.json({ message: '내전이 성공적으로 해체되었습니다.' });
+
+    } catch (error: unknown) {
+        console.error('DELETE Scrim API Error:', error);
+        const errorMessage = error instanceof Error ? error.message : '내전 해체에 실패했습니다.';
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }

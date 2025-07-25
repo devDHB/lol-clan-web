@@ -13,7 +13,8 @@ interface Scrim {
   status: string;
   createdAt: string;
   applicants: unknown[];
-  scrimType: string; // 내전 타입 추가
+  waitlist: unknown[];
+  scrimType: string;
 }
 
 interface UserProfile {
@@ -22,7 +23,7 @@ interface UserProfile {
 }
 
 interface UserMap {
-    [email: string]: string;
+  [email: string]: string;
 }
 
 // 상태별 색상을 정의하는 객체
@@ -47,7 +48,7 @@ export default function ScrimsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userMap, setUserMap] = useState<UserMap>({});
   const [loading, setLoading] = useState(true);
-  
+
   // --- 내전 생성 UI 상태 변경 ---
   const [createMode, setCreateMode] = useState<string | null>(null);
   const [newScrimName, setNewScrimName] = useState('');
@@ -69,7 +70,7 @@ export default function ScrimsPage() {
 
       const scrimsData = await scrimsRes.json();
       const usersData: { email: string; nickname: string }[] = await usersRes.json();
-      
+
       const map: UserMap = {};
       usersData.forEach(u => { map[u.email] = u.nickname; });
 
@@ -160,20 +161,25 @@ export default function ScrimsPage() {
           scrims.map((scrim) => {
             const creatorNickname = userMap[scrim.creatorEmail] || scrim.creatorEmail.split('@')[0];
             const applicantsCount = Array.isArray(scrim.applicants) ? scrim.applicants.length : 0;
+            const waitlistCount = Array.isArray(scrim.waitlist) ? scrim.waitlist.length : 0; // ⭐️ 대기자 수 계산
             const statusStyle = statusColors[scrim.status] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
             const typeStyle = scrimTypeColors[scrim.scrimType] || 'bg-gray-600';
 
             return (
               <Link key={scrim.scrimId} href={`/scrims/${scrim.scrimId}`} className="block bg-gray-800 p-6 rounded-lg shadow-lg hover:bg-gray-700/50 hover:-translate-y-1 border border-transparent hover:border-blue-500/50 transition-all duration-300">
                 <div className="flex justify-between items-start mb-3">
-                    <h2 className="text-xl font-bold text-yellow-400 truncate pr-2">{scrim.scrimName}</h2>
-                    <span className={`flex-shrink-0 px-2 py-0.5 text-xs font-semibold rounded-full border ${typeStyle}`}>
-                        {scrim.scrimType}
-                    </span>
+                  <h2 className="text-xl font-bold text-yellow-400 truncate pr-2">{scrim.scrimName}</h2>
+                  <span className={`flex-shrink-0 px-2 py-0.5 text-xs font-semibold rounded-full border ${typeStyle}`}>
+                    {scrim.scrimType}
+                  </span>
                 </div>
                 <p className="text-sm text-gray-500 mb-4">👑 주최자: {creatorNickname}</p>
                 <div className="flex justify-between items-center text-sm text-gray-400">
                   <span>참가자: {applicantsCount} / 10</span>
+                  {/* ⭐️ 대기자가 1명 이상일 때만 표시 */}
+                  {waitlistCount > 0 && (
+                    <span className="ml-2 text-yellow-400">(대기: {waitlistCount})</span>
+                  )}
                   <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${statusStyle}`}>{scrim.status}</span>
                 </div>
               </Link>

@@ -1,29 +1,41 @@
+// src/app/api/matches/route.ts
+
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
-// GET: 모든 경기 기록을 가져오는 함수
 export async function GET() {
   try {
     const matchesCollection = db.collection('matches');
-    // matchDate 필드를 기준으로 최신순으로 정렬합니다.
+    const scrimsCollection = db.collection('scrims');
     const snapshot = await matchesCollection.orderBy('matchDate', 'desc').get();
 
     if (snapshot.empty) {
       return NextResponse.json([]);
     }
 
-    const matches: unknown[] = [];
-    snapshot.forEach(doc => {
+    // 모든 Scrim 정보를 Map으로 미리 불러옵니다. (효율성)
+    const scrimsSnapshot = await scrimsCollection.get();
+    const scrimsMap = new Map();
+    scrimsSnapshot.forEach(doc => {
+      scrimsMap.set(doc.id, doc.data());
+    });
+
+    const matches = snapshot.docs.map(doc => {
       const data = doc.data();
-      // Firestore 타임스탬프를 ISO 문자열로 변환
-      const matchDate = data.matchDate?.toDate ? data.matchDate.toDate().toISOString() : null;
-      matches.push({
+      const scrimData = scrimsMap.get(data.scrimId) || {}; // scrimId로 해당 scrim 정보 찾기
+
+      return {
         matchId: doc.id,
-        ...data,
-        matchDate,
-      });
+        scrimId: data.scrimId,
+        winningTeam: data.winningTeam,
+        matchDate: data.matchDate?.toDate ? data.matchDate.toDate().toISOString() : null,
+        // ⭐️ Scrim에서 필요한 정보 추가
+        scrimName: scrimData.scrimName || '내전 경기',
+        scrimType: scrimData.scrimType || '일반',
+        creatorEmail: scrimData.creatorEmail || '정보 없음',
+      };
     });
 
     return NextResponse.json(matches);
