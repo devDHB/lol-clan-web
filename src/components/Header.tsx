@@ -8,7 +8,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 
-// 사용자 프로필 타입을 정의합니다.
 interface UserProfile {
     role: string;
     nickname: string;
@@ -64,6 +63,11 @@ export default function Header() {
                     <Link href="/scrims" className="text-lg font-medium hover:text-white transition-colors">내전</Link>
                     <Link href="/notices" className="text-lg font-medium hover:text-white transition-colors">공지사항</Link>
                     <Link href="/matches" className="text-lg font-medium hover:text-white transition-colors">매치 기록</Link>
+                    
+                    {/* ✅ [추가] 개인 전적 페이지로 가는 링크 */}
+                    <Link href={`/profile/${user.email}`} className="text-lg font-medium hover:text-white transition-colors">
+                        개인 전적
+                    </Link>
                 </nav>
 
                 <div className="flex items-center gap-4">
@@ -72,7 +76,8 @@ export default function Header() {
                             사용자 관리
                         </Link>
                     )}
-                    <Link href="/profile" className="text-base font-medium hover:text-white transition-colors">{profile?.nickname || user.email?.split('@')[0]}</Link>
+                    {/* ✅ [수정] 기존 프로필 링크도 동적 URL로 변경 */}
+                    <Link href={`/profile/${user.email}`} className="text-base font-medium hover:text-white transition-colors">{profile?.nickname || user.email?.split('@')[0]}</Link>
                     <button
                         onClick={handleLogout}
                         className="px-3 py-1.5 bg-red-600/50 hover:bg-red-600 border border-red-500/50 text-white font-semibold rounded-md text-sm transition-colors"

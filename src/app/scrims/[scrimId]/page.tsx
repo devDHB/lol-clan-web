@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
@@ -14,9 +14,9 @@ interface Applicant {
     positions: string[];
     champion?: string; // 챔피언 필드는 경기 중/종료 시에만 사용될 수 있음
     assignedPosition?: string; // <-- 추가: 플레이어가 할당된 실제 포지션 슬롯 (클라이언트에서만 사용)
+    championImageUrl?: string;
 }
 
-// ScrimData 타입: matchChampionHistory 필드 포함
 interface ScrimData {
     scrimId: string;
     scrimName: string;
@@ -30,11 +30,20 @@ interface ScrimData {
     redTeam: Applicant[];
     winningTeam?: 'blue' | 'red';
     scrimType: string;
-    matchChampionHistory?: { // 각 경기의 챔피언 사용 기록을 담을 배열
-        matchId: string; // 각 경기 기록의 고유 ID (서버에서 추가)
-        matchDate: string; // 클라이언트에서는 ISO string으로 받음
+    matchChampionHistory?: {
+        matchId: string;
+        matchDate: string;
         blueTeamChampions: { playerEmail: string; champion: string; position: string; }[];
         redTeamChampions: { playerEmail: string; champion: string; position: string; }[];
+    }[];
+    // 피어리스 임시 금지 목록
+    fearlessUsedChampions?: string[];
+    // 칼바람 전용 영구 전적
+    aramMatchHistory?: {
+        matchId: string;
+        matchDate: string;
+        blueTeamEmails: string[];
+        redTeamEmails: string[];
     }[];
 }
 
@@ -78,12 +87,16 @@ const scrimTypeColors: { [key: string]: string } = {
 };
 
 // 챔피언 검색 입력 컴포넌트
-function ChampionSearchInput({ value, onChange, placeholder, playerId, disabled }: { // disabled 추가
+function ChampionSearchInput({
+    value, onChange, placeholder, playerId, disabled,
+    disabledChampions // 👈 1. props 추가 (Set<string> 타입)
+}: {
     value: string;
     onChange: (championName: string) => void;
     placeholder: string;
-    playerId: string; // 고유 ID를 위해 사용
-    disabled?: boolean; // disabled 타입 추가
+    playerId: string;
+    disabled?: boolean;
+    disabledChampions?: Set<string>; // 👈 2. 타입 정의 추가
 }) {
     const [searchTerm, setSearchTerm] = useState(value);
     const [searchResults, setSearchResults] = useState<ChampionInfo[]>([]);
@@ -125,6 +138,11 @@ function ChampionSearchInput({ value, onChange, placeholder, playerId, disabled 
     }, [value]);
 
     const handleSelectChampion = (champion: ChampionInfo) => {
+        // 👈 3. 선택 시 한번 더 체크 (선택 사항이지만 안전함)
+        if (disabledChampions?.has(champion.name)) {
+            alert('이미 사용된 챔피언입니다.');
+            return;
+        }
         onChange(champion.name);
         setSearchTerm(champion.name);
         setShowResults(false);
@@ -145,20 +163,9 @@ function ChampionSearchInput({ value, onChange, placeholder, playerId, disabled 
                 disabled={disabled} // input에 disabled 속성 전달
                 // disabled일 때 스타일 변경
                 className={`w-full px-3 py-1 bg-gray-700 rounded ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+                
             />
-            {showResults && searchResults.length > 0 && (
-                <ul className="absolute z-10 w-full bg-gray-700 border border-gray-600 rounded-md mt-1 max-h-48 overflow-y-auto">
-                    {searchResults.map(champion => (
-                        <li
-                            key={champion.id}
-                            onMouseDown={() => handleSelectChampion(champion)}
-                            className="p-2 cursor-pointer hover:bg-gray-600 text-white"
-                        >
-                            {champion.name}
-                        </li>
-                    ))}
-                </ul>
-            )}
+            
             {loadingResults && searchTerm.trim().length > 0 && (
                 <div className="absolute top-0 right-2 h-full flex items-center text-gray-400 text-sm">
                     검색 중...
@@ -293,6 +300,21 @@ export default function ScrimDetailPage() {
     // allChampionNames의 타입을 명시적으로 Set<string>으로 지정
     const [allChampionNames, setAllChampionNames] = useState<Set<string>>(new Set());
 
+    const usedChampionsForPeerless = useMemo(() => {
+        if (!scrim || scrim.scrimType !== '피어리스') {
+            return new Set<string>();
+        }
+    
+        // ✅ [수정] 영구 전적이 아닌, '임시 금지 목록'인 fearlessUsedChampions를 참조합니다.
+        const fearlessBans = scrim.fearlessUsedChampions || [];
+    
+        // 현재 경기에서 실시간으로 선택 중인 챔피언 목록
+        const currentPicks = Object.values(championSelections).filter(Boolean);
+    
+        // 두 목록을 합쳐 최종 금지 목록을 생성합니다.
+        return new Set([...fearlessBans, ...currentPicks]);
+    
+    }, [scrim?.fearlessUsedChampions, championSelections]); // 의존성 배열도 수정
 
     const fetchData = useCallback(async () => {
         if (!scrimId) return;
@@ -345,13 +367,6 @@ export default function ScrimDetailPage() {
 
     useEffect(() => {
         if (scrim) {
-            const newChampionSelections: { [email: string]: string } = {};
-            [...(scrim.blueTeam || []), ...(scrim.redTeam || [])].forEach(p => {
-                if (p.champion) {
-                    newChampionSelections[p.email] = p.champion;
-                }
-            });
-            setChampionSelections(newChampionSelections);
 
             if (scrim.status === '팀 구성중' || scrim.status === '경기중' || scrim.status === '종료') {
                 const newBlueTeamSlots: Record<string, Applicant | null> = { ...initialTeamState };
@@ -461,20 +476,41 @@ export default function ScrimDetailPage() {
                     return alert('블루팀과 레드팀은 각각 5명으로 구성되어야 합니다.');
                 }
                 body.teams = { blueTeam, redTeam };
+                setChampionSelections({});
             }
 
             // --- 경기 종료 처리 (assignedPosition 포함하도록 수정) ---
             else if (action === 'end_game') {
+                // 🔽 [추가] 피어리스 모드 유효성 검사 🔽
+                if (scrim?.scrimType === '피어리스') {
+                    const currentPicks = Object.values(championSelections).filter(Boolean);
+                    
+                    // 1. 현재 선택한 챔피언들 내에서 중복이 있는지 확인
+                    const isDuplicateInCurrentPicks = new Set(currentPicks).size !== currentPicks.length;
+                    if (isDuplicateInCurrentPicks) {
+                        return alert('팀 내에 중복된 챔피언이 있습니다. 수정해주세요.');
+                    }
+            
+                    // 2. 이전에 사용된 챔피언(금지된 챔피언)을 선택했는지 확인
+                    const fearlessBans = scrim.fearlessUsedChampions || [];
+                    const usedBannedChampion = currentPicks.find(pick => fearlessBans.includes(pick));
+                    if (usedBannedChampion) {
+                        return alert(`'${usedBannedChampion}' 챔피언은 이전 경기에서 사용되어 금지되었습니다.`);
+                    }
+                }
+                
+                // 유효성 검사 통과 후 기존 로직 실행
                 body.winningTeam = payload.winningTeam;
+                body.scrimType = scrim?.scrimType;
                 body.championData = {
                     blueTeam: Object.keys(blueTeamSlots).filter(pos => blueTeamSlots[pos]).map(pos => ({
                         ...blueTeamSlots[pos]!,
-                        champion: championSelections[blueTeamSlots[pos]!.email] || '미입력',
+                        champion: championSelections[blueTeamSlots[pos]!.email] || '',
                         assignedPosition: pos,
                     })),
                     redTeam: Object.keys(redTeamSlots).filter(pos => redTeamSlots[pos]).map(pos => ({
                         ...redTeamSlots[pos]!,
-                        champion: championSelections[redTeamSlots[pos]!.email] || '미입력',
+                        champion: championSelections[redTeamSlots[pos]!.email] || '',
                         assignedPosition: pos,
                     })),
                 };
@@ -816,6 +852,7 @@ export default function ScrimDetailPage() {
                             </div>
                         </div>
                     </DndContext>
+                    
                     <div className="text-center space-x-4 mt-6">
                         <button onClick={() => handleScrimAction('start_game')} className="py-2 px-8 bg-green-600 hover:bg-green-700 rounded-md font-semibold">경기 시작</button>
                         <button
@@ -823,6 +860,17 @@ export default function ScrimDetailPage() {
                             className="py-2 px-8 bg-gray-600 hover:bg-gray-700 rounded-md font-semibold"
                         >
                             모집중 상태로 되돌리기
+                        </button>
+                        {/* ✅ [추가] '팀 구성중'일 때만 보이는 팀 초기화 버튼 */}
+                        <button
+                            onClick={() => {
+                                if (confirm('모든 선수를 참가자 목록으로 되돌리고 팀을 초기화하시겠습니까?')) {
+                                    handleScrimAction('reset_teams_and_move_to_applicants');
+                                }
+                            }}
+                            className="py-2 px-8 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold"
+                        >
+                            팀 초기화
                         </button>
                     </div>
                     {/* ==================== 대기열 섹션 시작 ==================== */}
@@ -979,10 +1027,12 @@ export default function ScrimDetailPage() {
                                     </span>
                                     <ChampionSearchInput
                                         playerId={player.email}
-                                        value={championSelections[player.email] || ''}
+                                        value={championSelections[player.email] || ''} // 이제 빈 문자열이 전달됩니다.
                                         onChange={(championName) => setChampionSelections(prev => ({ ...prev, [player.email]: championName }))}
-                                        placeholder="챔피언 검색..."
-                                        disabled={scrim.scrimType === '칼바람'} // 이 줄을 추가!
+                                        // 🔽 [변경] placeholder를 원하는 텍스트로 설정 🔽
+                                        placeholder="챔피언 선택..."
+                                        disabled={scrim.scrimType === '칼바람'}
+                                        disabledChampions={usedChampionsForPeerless}
                                     />
                                 </div>
                             ))}
@@ -997,74 +1047,61 @@ export default function ScrimDetailPage() {
                                     </span>
                                     <ChampionSearchInput
                                         playerId={player.email}
-                                        value={championSelections[player.email] || ''}
+                                        value={championSelections[player.email] || ''} // 이제 빈 문자열이 전달됩니다.
                                         onChange={(championName) => setChampionSelections(prev => ({ ...prev, [player.email]: championName }))}
-                                        placeholder="챔피언 검색..."
-                                        disabled={scrim.scrimType === '칼바람'} // 이 줄을 추가!
+                                        // 🔽 [변경] placeholder를 원하는 텍스트로 설정 🔽
+                                        placeholder="챔피언 선택..."
+                                        disabled={scrim.scrimType === '칼바람'}
+                                        disabledChampions={usedChampionsForPeerless}
                                     />
                                 </div>
                             ))}
                         </div>
                     </div>
-                    {/* 피어리스 내전에서 사용된 챔피언 목록 표시 (경기중) */}
-                    {scrim.scrimType === '피어리스' && scrim.matchChampionHistory && scrim.matchChampionHistory.length > 0 && (
-                        <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-yellow-700">
-                            <h3 className="text-xl font-bold mb-3 text-center text-yellow-400">
-                                사용된 챔피언 기록
-                            </h3>
-                            {scrim.matchChampionHistory.map((matchRecord, index) => {
-                                // 포지션 정렬 헬퍼 함수 정의 (컴포넌트 외부에 정의하는 것이 더 효율적)
-                                const getPositionSortOrder = (position: string) => {
-                                    const posIndex = POSITIONS.indexOf(position);
-                                    // POSITIONS에 없는 포지션은 가장 뒤로 보냅니다.
-                                    return posIndex === -1 ? POSITIONS.length : posIndex;
-                                };
 
-                                return (
-                                    <div key={matchRecord.matchId || index} className="mb-4 p-3 bg-gray-700 rounded-md">
-                                        <p className="text-gray-400 text-sm mb-2">
-                                            경기 {scrim.matchChampionHistory!.length - index} ({new Date(matchRecord.matchDate).toLocaleString()})
+                    {/* 임시 금지 목록 (fearlessUsedChampions) - 경기별로 묶어서 표시 */}
+                    {scrim.scrimType === '피어리스' && scrim.fearlessUsedChampions && scrim.fearlessUsedChampions.length > 0 && (
+                        <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-purple-700">
+                            <h3 className="text-xl font-bold mb-4 text-center text-purple-400">
+                                이번 내전 사용 챔피언 (초기화 가능)
+                            </h3>
+                            <div className="space-y-4">
+                                {/* ✅ [수정] (scrim.fearlessUsedChampions || []) 로 변경하여 에러 해결 */}
+                                {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) => 
+                                    (scrim.fearlessUsedChampions || []).slice(i * 10, i * 10 + 10)
+                                ).map((gameChampions, index) => (
+                                    <div key={index} className="p-3 bg-gray-700/50 rounded-md">
+                                        <p className="text-sm font-semibold text-gray-400 mb-2">
+                                            {index + 1}번째 경기 사용 챔피언
                                         </p>
-                                        <div className="flex flex-wrap justify-between gap-4">
-                                            {/* 블루팀 챔피언 */}
-                                            <div className="w-full md:w-[calc(50%-0.5rem)]">
-                                                <h4 className="text-blue-300 font-semibold mb-1">블루팀</h4>
-                                                <div className="space-y-1">
-                                                    {matchRecord.blueTeamChampions
-                                                        .sort((a, b) => getPositionSortOrder(a.position) - getPositionSortOrder(b.position)) // 포지션 순서대로 정렬
-                                                        .map(champData => (
-                                                            <span key={champData.playerEmail} className="block text-sm">
-                                                                {userMap[champData.playerEmail] || champData.playerEmail.split('@')[0]}: <span className="font-bold text-yellow-400">{champData.champion}</span>
-                                                                <span className="text-gray-400 ml-1 text-xs">({champData.position})</span>
-                                                            </span>
-                                                        ))}
-                                                </div>
-                                            </div>
-                                            {/* 레드팀 챔피언 */}
-                                            <div className="w-full md:w-[calc(50%-0.5rem)]">
-                                                <h4 className="text-red-300 font-semibold mb-1">레드팀</h4>
-                                                <div className="space-y-1">
-                                                    {matchRecord.redTeamChampions
-                                                        .sort((a, b) => getPositionSortOrder(a.position) - getPositionSortOrder(b.position)) // 포지션 순서대로 정렬
-                                                        .map(champData => (
-                                                            <span key={champData.playerEmail} className="block text-sm">
-                                                                {userMap[champData.playerEmail] || champData.playerEmail.split('@')[0]}: <span className="font-bold text-yellow-400">{champData.champion}</span>
-                                                                {champData.position && <span className="text-gray-400 ml-1 text-xs">({champData.position})</span>}
-                                                            </span>
-                                                        ))}
-                                                </div>
-                                            </div>
+                                        <div className="flex flex-wrap justify-center gap-2">
+                                            {gameChampions.map(championName => (
+                                                <span key={championName} className="px-3 py-1 bg-gray-700 text-sm rounded-md line-through">
+                                                    {championName}
+                                                </span>
+                                            ))}
                                         </div>
                                     </div>
-                                )
-                            })}
+                                ))}
+                            </div>
                         </div>
                     )}
 
                     {canManage && (
                         <div className="text-center space-x-4 mt-6">
-                            <button onClick={() => handleScrimAction('end_game', { winningTeam: 'blue' })} className="py-2 px-8 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold">블루팀 승리</button>
-                            <button onClick={() => handleScrimAction('end_game', { winningTeam: 'red' })} className="py-2 px-8 bg-red-600 hover:bg-red-700 rounded-md font-semibold">레드팀 승리</button>
+                            <button 
+                                onClick={() => handleScrimAction('end_game', { winningTeam: 'blue', scrimType: scrim.scrimType })} 
+                                className="py-2 px-8 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold"
+                            >
+                                블루팀 승리
+                            </button>
+                            <button 
+                                onClick={() => handleScrimAction('end_game', { winningTeam: 'red', scrimType: scrim.scrimType })} 
+                                className="py-2 px-8 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
+                            >
+                                레드팀 승리
+                            </button>
+
                             <button
                                 onClick={() => handleScrimAction('reset_to_team_building')}
                                 className="py-2 px-8 bg-orange-600 hover:bg-orange-700 rounded-md font-semibold"
@@ -1375,66 +1412,74 @@ export default function ScrimDetailPage() {
                         <div className="bg-gray-800 p-4 rounded-lg border-2 border-blue-500">
                             <h3 className="text-xl font-bold mb-4 text-center text-blue-400">블루팀</h3>
                             <div className="space-y-2">
-                                {(scrim.blueTeam || []).map(player => (
-                                    <div key={player.email} className="flex items-center justify-between p-2 bg-gray-700/50 rounded">
-                                        <span className="font-semibold">{player.nickname} {scrim.scrimType !== '칼바람' && `(${player.tier})`}</span>
-                                        <span className="font-bold text-yellow-400">{player.champion}</span>
-                                    </div>
-                                ))}
+                                {/* ✅ [수정] 포지션 순서대로 정렬하는 .sort() 함수 추가 */}
+                                {(scrim.blueTeam || [])
+                                    // ✅ [수정] .sort() 함수 안에서 || '' 를 추가하여 undefined 가능성을 제거합니다.
+                                    .sort((a, b) => POSITIONS.indexOf(a.assignedPosition || '') - POSITIONS.indexOf(b.assignedPosition || ''))
+                                    .map(player => (
+                                        <div key={player.email} className="flex items-center justify-between p-2 bg-gray-700/50 rounded">
+                                            <span className="font-semibold">{player.nickname} {scrim.scrimType !== '칼바람' && `(${player.tier})`}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-yellow-400">{player.champion}</span>
+                                                {player.championImageUrl && (
+                                                    <img src={player.championImageUrl} alt={player.champion} className="w-8 h-8 rounded-md" />
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                             </div>
                         </div>
                         {/* 레드팀 */}
                         <div className="bg-gray-800 p-4 rounded-lg border-2 border-red-500">
                             <h3 className="text-xl font-bold mb-4 text-center text-red-500">레드팀</h3>
                             <div className="space-y-2">
-                                {(scrim.redTeam || []).map(player => (
-                                    <div key={player.email} className="flex items-center justify-between p-2 bg-gray-700/50 rounded">
-                                        <span className="font-semibold">{player.nickname} {scrim.scrimType !== '칼바람' && `(${player.tier})`}</span>
-                                        <span className="font-bold text-yellow-400">{player.champion}</span>
-                                    </div>
-                                ))}
+                                {/* ✅ [수정] 포지션 순서대로 정렬하는 .sort() 함수 추가 */}
+                                {(scrim.redTeam || [])
+                                    // ✅ [수정] .sort() 함수 안에서 || '' 를 추가하여 undefined 가능성을 제거합니다.
+                                    .sort((a, b) => POSITIONS.indexOf(a.assignedPosition || '') - POSITIONS.indexOf(b.assignedPosition || ''))
+                                    .map(player => (
+                                        <div key={player.email} className="flex items-center justify-between p-2 bg-gray-700/50 rounded">
+                                            <span className="font-semibold">{player.nickname} {scrim.scrimType !== '칼바람' && `(${player.tier})`}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-yellow-400">{player.champion}</span>
+                                                {player.championImageUrl && (
+                                                    <img src={player.championImageUrl} alt={player.champion} className="w-8 h-8 rounded-md" />
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                             </div>
                         </div>
                     </div>
 
-                    {/* 피어리스 챔피언 기록 */}
-                    {scrim.scrimType === '피어리스' && (scrim.matchChampionHistory || []).length > 0 && (
-                        <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-yellow-700">
-                            <h3 className="text-xl font-bold mb-3 text-center text-yellow-400">사용된 챔피언 기록</h3>
-                            {(scrim.matchChampionHistory || []).map((matchRecord, index) => (
-                                <div key={matchRecord.matchId || index} className="mb-4 p-3 bg-gray-700 rounded-md">
-                                    <p className="text-gray-400 text-sm mb-2">경기 {(scrim.matchChampionHistory || []).length - index} ({new Date(matchRecord.matchDate).toLocaleString()})</p>
-                                    <div className="flex flex-wrap justify-between gap-4">
-                                        {/* 블루팀 챔피언 */}
-                                        <div className="w-full md:w-[calc(50%-0.5rem)]">
-                                            <h4 className="text-blue-300 font-semibold mb-1">블루팀</h4>
-                                            <div className="space-y-1">
-                                                {(matchRecord.blueTeamChampions || []).map(champData => (
-                                                    <span key={champData.playerEmail} className="block text-sm">
-                                                        {userMap[champData.playerEmail] || champData.playerEmail.split('@')[0]}: <span className="font-bold text-yellow-400">{champData.champion}</span>
-                                                        <span className="text-gray-400 ml-1 text-xs">({champData.position})</span>
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        {/* 레드팀 챔피언 */}
-                                        <div className="w-full md:w-[calc(50%-0.5rem)]">
-                                            <h4 className="text-red-300 font-semibold mb-1">레드팀</h4>
-                                            <div className="space-y-1">
-                                                {(matchRecord.redTeamChampions || []).map(champData => (
-                                                    <span key={champData.playerEmail} className="block text-sm">
-                                                        {userMap[champData.playerEmail] || champData.playerEmail.split('@')[0]}: <span className="font-bold text-yellow-400">{champData.champion}</span>
-                                                        {champData.position && <span className="text-gray-400 ml-1 text-xs">({champData.position})</span>}
-                                                    </span>
-                                                ))}
-                                            </div>
+                    {/* 임시 금지 목록 (fearlessUsedChampions) - 경기별로 묶어서 표시 */}
+                    {scrim.scrimType === '피어리스' && scrim.fearlessUsedChampions && scrim.fearlessUsedChampions.length > 0 && (
+                        <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-purple-700">
+                            <h3 className="text-xl font-bold mb-4 text-center text-purple-400">
+                                이번 내전 사용 챔피언 (초기화 가능)
+                            </h3>
+                            <div className="space-y-4">
+                                {/* ✅ [수정] (scrim.fearlessUsedChampions || []) 로 변경하여 에러 해결 */}
+                                {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) => 
+                                    (scrim.fearlessUsedChampions || []).slice(i * 10, i * 10 + 10)
+                                ).map((gameChampions, index) => (
+                                    <div key={index} className="p-3 bg-gray-700/50 rounded-md">
+                                        <p className="text-sm font-semibold text-gray-400 mb-2">
+                                            {index + 1}번째 경기 사용 챔피언
+                                        </p>
+                                        <div className="flex flex-wrap justify-center gap-2">
+                                            {gameChampions.map(championName => (
+                                                <span key={championName} className="px-3 py-1 bg-gray-700 text-sm rounded-md line-through">
+                                                    {championName}
+                                                </span>
+                                            ))}
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-
                     )}
+
                     {canManage && (
                         <div className="text-center mt-6 space-x-4">
                             <button
