@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 
-// 타입 정의: API 응답에 맞춰 칼바람 필드 추가
+// --- 타입 정의 ---
 interface UserStats {
     email: string;
     nickname: string;
@@ -11,15 +11,74 @@ interface UserStats {
     totalWins: number;
     aramGames: number;
     aramWins: number;
-    positions: {
-        [key: string]: { games: number; wins: number; }
-    };
+    positions: { [key: string]: { games: number; wins: number; } };
+}
+
+interface RankedPlayer {
+    email: string;
+    nickname: string;
+    value: number;
+}
+
+interface HallOfFameStats {
+    mostWins: RankedPlayer[];
+    mostGames: RankedPlayer[];
+    positions: { [key: string]: RankedPlayer[] };
 }
 
 type SortKey = 'nickname' | 'totalGames' | 'winRate' | 'aramGames' | 'aramWinRate' | 'TOP' | 'JG' | 'MID' | 'AD' | 'SUP';
 
+// --- 명예의 전당 랭커 카드 컴포넌트 ---
+const RankerCard = ({ rank, player, unit }: { rank: number; player: RankedPlayer; unit: string; }) => {
+    const medals = ['🥇', '🥈', '🥉'];
+    return (
+        <Link href={`/profile/${player.email}`} className="flex items-center gap-3 p-2 bg-gray-700/50 rounded-md hover:bg-gray-700 transition-colors">
+            <span className="text-xl w-6 text-center">{medals[rank]}</span>
+            <div className="flex-grow truncate">
+                <p className="font-bold text-white truncate">{player.nickname}</p>
+            </div>
+            <span className="font-semibold text-yellow-400">{player.value}{unit}</span>
+        </Link>
+    );
+};
+
+// --- 명예의 전당 섹션 컴포넌트 ---
+const HallOfFameSection = ({ hallOfFame }: { hallOfFame: HallOfFameStats | null }) => {
+    if (!hallOfFame) return null;
+
+    const categories = [
+        { title: '다승왕', data: hallOfFame.mostWins, unit: '승' },
+        { title: '꾸준왕', data: hallOfFame.mostGames, unit: '게임' },
+        { title: 'TOP 다승', data: hallOfFame.positions.TOP, unit: '승' },
+        { title: 'JG 다승', data: hallOfFame.positions.JG, unit: '승' },
+        { title: 'MID 다승', data: hallOfFame.positions.MID, unit: '승' },
+        { title: 'AD 다승', data: hallOfFame.positions.AD, unit: '승' },
+        { title: 'SUP 다승', data: hallOfFame.positions.SUP, unit: '승' },
+    ];
+
+    return (
+        <section className="mb-10">
+            <h2 className="text-3xl font-bold text-center mb-6 text-yellow-400">🏆 명예의 전당 🏆</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {categories.map(cat => cat.data && cat.data.length > 0 && (
+                    <div key={cat.title} className="bg-gray-800 p-4 rounded-lg">
+                        <h3 className="text-lg font-bold mb-3 text-center text-blue-300">{cat.title}</h3>
+                        <div className="space-y-2">
+                            {cat.data.map((player, index) => (
+                                <RankerCard key={player.email} rank={index} player={player} unit={cat.unit} />
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </section>
+    );
+};
+
+
 export default function StatsPage() {
-    const [stats, setStats] = useState<UserStats[]>([]);
+    const [allStats, setAllStats] = useState<UserStats[]>([]);
+    const [hallOfFame, setHallOfFame] = useState<HallOfFameStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'totalGames', direction: 'desc' });
 
@@ -28,8 +87,9 @@ export default function StatsPage() {
         try {
             const res = await fetch('/api/stats');
             if (!res.ok) throw new Error('Failed to fetch stats');
-            const data = await res.json();
-            setStats(data);
+            const { hallOfFame, allStats } = await res.json();
+            setHallOfFame(hallOfFame);
+            setAllStats(allStats);
         } catch (error) {
             console.error('Failed to fetch stats:', error);
         } finally {
@@ -47,7 +107,7 @@ export default function StatsPage() {
     };
 
     const sortedStats = useMemo(() => {
-        let sortableItems = [...stats];
+        let sortableItems = [...allStats];
         if (sortConfig.key) {
             sortableItems.sort((a, b) => {
                 const key = sortConfig.key;
@@ -67,14 +127,14 @@ export default function StatsPage() {
                     aValue = a.positions[key]?.games || 0;
                     bValue = b.positions[key]?.games || 0;
                 }
-
+                
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
             });
         }
         return sortableItems;
-    }, [stats, sortConfig]);
+    }, [allStats, sortConfig]);
 
     const requestSort = (key: SortKey) => {
         let direction: 'asc' | 'desc' = 'desc';
@@ -95,7 +155,9 @@ export default function StatsPage() {
 
     return (
         <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
-            <h1 className="text-4xl font-bold text-blue-400 mb-8">전체 유저 통계</h1>
+            <HallOfFameSection hallOfFame={hallOfFame} />
+            
+            <h1 className="text-4xl font-bold text-blue-400 mb-8">전적 통계</h1>
             <div className="overflow-x-auto bg-gray-800 rounded-lg shadow-lg">
                 <table className="w-full text-left whitespace-nowrap">
                     <thead className="bg-gray-700/50">
@@ -125,7 +187,6 @@ export default function StatsPage() {
                                     {calculateWinRate(s.totalWins, s.totalGames).toFixed(1)}%
                                     <span className="text-xs text-gray-400 ml-1">({s.totalWins}승 {s.totalGames - s.totalWins}패)</span>
                                 </td>
-                                {/* ✅ [추가] 칼바람 전적 표시 */}
                                 <td className="p-3 text-center">{s.aramGames}</td>
                                 <td className="p-3 text-center">
                                     {calculateWinRate(s.aramWins, s.aramGames).toFixed(1)}%
