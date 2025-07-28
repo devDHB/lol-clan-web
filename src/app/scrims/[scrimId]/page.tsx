@@ -5,15 +5,16 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { DndContext, useDraggable, useDroppable, closestCenter, DragEndEvent } from '@dnd-kit/core';
+import Image from 'next/image';
 
-// 타입 정의
+// --- 타입 정의 ---
 interface Applicant {
     email: string;
     nickname: string;
     tier: string;
     positions: string[];
-    champion?: string; // 챔피언 필드는 경기 중/종료 시에만 사용될 수 있음
-    assignedPosition?: string; // <-- 추가: 플레이어가 할당된 실제 포지션 슬롯 (클라이언트에서만 사용)
+    champion?: string;
+    assignedPosition?: string;
     championImageUrl?: string;
 }
 
@@ -36,9 +37,7 @@ interface ScrimData {
         blueTeamChampions: { playerEmail: string; champion: string; position: string; }[];
         redTeamChampions: { playerEmail: string; champion: string; position: string; }[];
     }[];
-    // 피어리스 임시 금지 목록
     fearlessUsedChampions?: string[];
-    // 칼바람 전용 영구 전적
     aramMatchHistory?: {
         matchId: string;
         matchDate: string;
@@ -61,10 +60,10 @@ interface RankedPosition {
     rank: number;
 }
 
-// ChampionInfo 인터페이스 정의
 interface ChampionInfo {
-    id: string; // 영문 ID (예: "Aatrox")
-    name: string; // 한글 이름 (예: "아트록스")
+    id: string;
+    name: string;
+    imageUrl: string;
 }
 
 const POSITIONS = ['TOP', 'JG', 'MID', 'AD', 'SUP'];
@@ -89,7 +88,7 @@ const scrimTypeColors: { [key: string]: string } = {
 // 챔피언 검색 입력 컴포넌트
 function ChampionSearchInput({
     value, onChange, placeholder, playerId, disabled,
-    disabledChampions // 👈 1. props 추가 (Set<string> 타입)
+    disabledChampions // � 1. props 추가 (Set<string> 타입)
 }: {
     value: string;
     onChange: (championName: string) => void;
@@ -163,9 +162,7 @@ function ChampionSearchInput({
                 disabled={disabled} // input에 disabled 속성 전달
                 // disabled일 때 스타일 변경
                 className={`w-full px-3 py-1 bg-gray-700 rounded ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-                
             />
-            
             {loadingResults && searchTerm.trim().length > 0 && (
                 <div className="absolute top-0 right-2 h-full flex items-center text-gray-400 text-sm">
                     검색 중...
@@ -258,16 +255,26 @@ function TeamColumn({ id, title, players, color = 'gray', scrimType }: { // scri
         <div ref={setNodeRef} className={`bg-gray-800 p-4 rounded-lg w-full border-2 ${isOver ? 'border-green-500' : borderColor}`}>
             <h3 className={`text-xl font-bold mb-4 text-center text-white`}>{title} ({players.length})</h3>
             <div className="space-y-2 min-h-[300px]">
-                {id === 'applicants' ? (
-                    players.map(player => (
-                        <PlayerCard key={`applicant-${player.email}`} player={player} scrimType={scrimType} /> // scrimType 전달
-                    ))
-                ) : (
-                    null
-                )}
+                {players.map(player => (
+                    <PlayerCard key={`player-${player.email}`} player={player} scrimType={scrimType} />
+                ))}
             </div>
         </div>
     );
+    // return (
+    //     <div ref={setNodeRef} className={`bg-gray-800 p-4 rounded-lg w-full border-2 ${isOver ? 'border-green-500' : borderColor}`}>
+    //         <h3 className={`text-xl font-bold mb-4 text-center text-white`}>{title} ({players.length})</h3>
+    //         <div className="space-y-2 min-h-[300px]">
+    //             {id === 'applicants' ? (
+    //                 players.map(player => (
+    //                     <PlayerCard key={`applicant-${player.email}`} player={player} scrimType={scrimType} /> // scrimType 전달
+    //                 ))
+    //             ) : (
+    //                 null
+    //             )}
+    //         </div>
+    //     </div>
+    // );
 }
 
 export default function ScrimDetailPage() {
@@ -304,16 +311,16 @@ export default function ScrimDetailPage() {
         if (!scrim || scrim.scrimType !== '피어리스') {
             return new Set<string>();
         }
-    
+
         // ✅ [수정] 영구 전적이 아닌, '임시 금지 목록'인 fearlessUsedChampions를 참조합니다.
         const fearlessBans = scrim.fearlessUsedChampions || [];
-    
+
         // 현재 경기에서 실시간으로 선택 중인 챔피언 목록
         const currentPicks = Object.values(championSelections).filter(Boolean);
-    
+
         // 두 목록을 합쳐 최종 금지 목록을 생성합니다.
         return new Set([...fearlessBans, ...currentPicks]);
-    
+
     }, [scrim?.fearlessUsedChampions, championSelections]); // 의존성 배열도 수정
 
     const fetchData = useCallback(async () => {
@@ -367,63 +374,81 @@ export default function ScrimDetailPage() {
 
     useEffect(() => {
         if (scrim) {
+            if (scrim) {
+                if (scrim.status === '팀 구성중' || scrim.status === '경기중' || scrim.status === '종료') {
+                    const newBlueSlots: Record<string, Applicant | null> = { ...initialTeamState };
+                    const newRedSlots: Record<string, Applicant | null> = { ...initialTeamState };
 
-            if (scrim.status === '팀 구성중' || scrim.status === '경기중' || scrim.status === '종료') {
-                const newBlueTeamSlots: Record<string, Applicant | null> = { ...initialTeamState };
-                const newRedTeamSlots: Record<string, Applicant | null> = { ...initialTeamState };
-
-                // 1. 서버에서 받아온 blueTeam을 슬롯에 배치
-                const tempBlueTeamPlayers = [...(scrim.blueTeam || [])];
-
-                POSITIONS.forEach(pos => { // 선호 포지션 우선 할당
-                    const playerIndex = tempBlueTeamPlayers.findIndex(player =>
-                        player.positions.some(p => p.split('(')[0].trim() === pos)
-                    );
-                    if (playerIndex !== -1 && newBlueTeamSlots[pos] === null) {
-                        newBlueTeamSlots[pos] = tempBlueTeamPlayers[playerIndex];
-                        tempBlueTeamPlayers.splice(playerIndex, 1);
+                    if (scrim.scrimType === '칼바람') {
+                        // 칼바람 모드: 포지션 상관없이 순서대로 채움
+                        (scrim.blueTeam || []).forEach((player, index) => {
+                            newBlueSlots[POSITIONS[index]] = player;
+                        });
+                        (scrim.redTeam || []).forEach((player, index) => {
+                            newRedSlots[POSITIONS[index]] = player;
+                        });
+                    } else {
+                        // 일반/피어리스 모드: assignedPosition 기준으로 채움
+                        (scrim.blueTeam || []).forEach(player => {
+                            if (player.assignedPosition && POSITIONS.includes(player.assignedPosition)) {
+                                newBlueSlots[player.assignedPosition] = player;
+                            }
+                        });
+                        (scrim.redTeam || []).forEach(player => {
+                            if (player.assignedPosition && POSITIONS.includes(player.assignedPosition)) {
+                                newRedSlots[player.assignedPosition] = player;
+                            }
+                        });
                     }
-                });
-                // 남은 블루팀 플레이어(ALL 포지션 또는 선호 포지션이 이미 차있는 경우)를 빈 슬롯에 채움
-                tempBlueTeamPlayers.forEach(player => {
-                    const emptySlot = POSITIONS.find(pos => newBlueTeamSlots[pos] === null);
-                    if (emptySlot) {
-                        newBlueTeamSlots[emptySlot] = player;
-                    }
-                });
 
-                // 2. 서버에서 받아온 redTeam을 슬롯에 배치
-                const tempRedTeamPlayers = [...(scrim.redTeam || [])];
+                    setBlueTeamSlots(newBlueSlots);
+                    setRedTeamSlots(newRedSlots);
+                    setApplicants(scrim.applicants || []);
 
-                POSITIONS.forEach(pos => { // 선호 포지션 우선 할당
-                    const playerIndex = tempRedTeamPlayers.findIndex(player =>
-                        player.positions.some(p => p.split('(')[0].trim() === pos)
-                    );
-                    if (playerIndex !== -1 && newRedTeamSlots[pos] === null) {
-                        newRedTeamSlots[pos] = tempRedTeamPlayers[playerIndex];
-                        tempRedTeamPlayers.splice(playerIndex, 1);
-                    }
-                });
-                // 남은 레드팀 플레이어(ALL 포지션 또는 선호 포지션이 이미 차있는 경우)를 빈 슬롯에 채움
-                tempRedTeamPlayers.forEach(player => {
-                    const emptySlot = POSITIONS.find(pos => newRedTeamSlots[pos] === null);
-                    if (emptySlot) {
-                        newRedTeamSlots[emptySlot] = player;
-                    }
-                });
-
-                setBlueTeamSlots(newBlueTeamSlots);
-                setRedTeamSlots(newRedTeamSlots);
-
-                setApplicants(scrim.applicants || []);
-
-            } else { // scrim.status === '모집중'
-                setApplicants(scrim.applicants || []);
-                setBlueTeamSlots(initialTeamState);
-                setRedTeamSlots(initialTeamState);
+                } else { // '모집중' 상태
+                    setApplicants(scrim.applicants || []);
+                    setBlueTeamSlots(initialTeamState);
+                    setRedTeamSlots(initialTeamState);
+                }
             }
         }
     }, [scrim]);
+
+    // ✅ [추가] 팀을 랜덤으로 섞는 함수
+    const handleRandomizeTeams = () => {
+        if (!confirm('현재 팀을 랜덤으로 재구성하시겠습니까?')) return;
+
+        const allPlayers = [
+            ...applicants,
+            ...Object.values(blueTeamSlots).filter(Boolean),
+            ...Object.values(redTeamSlots).filter(Boolean)
+        ].filter((value, index, self) => self.findIndex(v => v!.email === value!.email) === index) as Applicant[];
+
+        if (allPlayers.length < 10) {
+            return alert('팀을 나누려면 10명의 선수가 필요합니다.');
+        }
+
+        const shuffledPlayers = [...allPlayers].sort(() => 0.5 - Math.random());
+
+        const newBlueTeam = shuffledPlayers.slice(0, 5);
+        const newRedTeam = shuffledPlayers.slice(5, 10);
+
+        const newBlueTeamSlots: Record<string, Applicant | null> = { ...initialTeamState };
+        const newRedTeamSlots: Record<string, Applicant | null> = { ...initialTeamState };
+
+        newBlueTeam.forEach((player, index) => {
+            newBlueTeamSlots[POSITIONS[index]] = player;
+        });
+        newRedTeam.forEach((player, index) => {
+            newRedTeamSlots[POSITIONS[index]] = player;
+        });
+
+        setBlueTeamSlots(newBlueTeamSlots);
+        setRedTeamSlots(newRedTeamSlots);
+        setApplicants([]); // 모든 플레이어가 팀에 배정되었으므로 참가자 목록은 비웁니다.
+    };
+
+
     const handleScrimAction = async (action: string, payload?: any) => {
         if (!user || !user.email) return alert('로그인이 필요합니다.');
 
@@ -470,8 +495,14 @@ export default function ScrimDetailPage() {
 
             // --- 경기 시작 처리 ---
             else if (action === 'start_game') {
-                const blueTeam = Object.values(blueTeamSlots).filter(p => p);
-                const redTeam = Object.values(redTeamSlots).filter(p => p);
+                const blueTeam = Object.keys(blueTeamSlots)
+                    .filter(pos => blueTeamSlots[pos])
+                    .map(pos => ({ ...blueTeamSlots[pos]!, assignedPosition: pos }));
+
+                const redTeam = Object.keys(redTeamSlots)
+                    .filter(pos => redTeamSlots[pos])
+                    .map(pos => ({ ...redTeamSlots[pos]!, assignedPosition: pos }));
+
                 if (blueTeam.length !== 5 || redTeam.length !== 5) {
                     return alert('블루팀과 레드팀은 각각 5명으로 구성되어야 합니다.');
                 }
@@ -481,35 +512,42 @@ export default function ScrimDetailPage() {
 
             // --- 경기 종료 처리 (assignedPosition 포함하도록 수정) ---
             else if (action === 'end_game') {
-                // 🔽 [추가] 피어리스 모드 유효성 검사 🔽
+                if (scrim?.scrimType !== '칼바람') {
+                    const allPlayers = [...Object.values(blueTeamSlots), ...Object.values(redTeamSlots)].filter(Boolean);
+
+                    // 모든 플레이어가 챔피언을 선택했는지 확인
+                    for (const player of allPlayers) {
+                        if (!player || !championSelections[player.email] || championSelections[player.email].trim() === '') {
+                            return alert(`'${player?.nickname}' 님의 챔피언을 선택해주세요.`);
+                        }
+                    }
+                }
+
                 if (scrim?.scrimType === '피어리스') {
                     const currentPicks = Object.values(championSelections).filter(Boolean);
-                    
-                    // 1. 현재 선택한 챔피언들 내에서 중복이 있는지 확인
                     const isDuplicateInCurrentPicks = new Set(currentPicks).size !== currentPicks.length;
                     if (isDuplicateInCurrentPicks) {
                         return alert('팀 내에 중복된 챔피언이 있습니다. 수정해주세요.');
                     }
-            
-                    // 2. 이전에 사용된 챔피언(금지된 챔피언)을 선택했는지 확인
                     const fearlessBans = scrim.fearlessUsedChampions || [];
                     const usedBannedChampion = currentPicks.find(pick => fearlessBans.includes(pick));
                     if (usedBannedChampion) {
                         return alert(`'${usedBannedChampion}' 챔피언은 이전 경기에서 사용되어 금지되었습니다.`);
                     }
                 }
-                
-                // 유효성 검사 통과 후 기존 로직 실행
+
                 body.winningTeam = payload.winningTeam;
                 body.scrimType = scrim?.scrimType;
                 body.championData = {
                     blueTeam: Object.keys(blueTeamSlots).filter(pos => blueTeamSlots[pos]).map(pos => ({
                         ...blueTeamSlots[pos]!,
+                        // 🔽 [변경] '미입력' 대신 빈 문자열 '' 사용 🔽
                         champion: championSelections[blueTeamSlots[pos]!.email] || '',
                         assignedPosition: pos,
                     })),
                     redTeam: Object.keys(redTeamSlots).filter(pos => redTeamSlots[pos]).map(pos => ({
                         ...redTeamSlots[pos]!,
+                        // 🔽 [변경] '미입력' 대신 빈 문자열 '' 사용 🔽
                         champion: championSelections[redTeamSlots[pos]!.email] || '',
                         assignedPosition: pos,
                     })),
@@ -596,65 +634,129 @@ export default function ScrimDetailPage() {
         }
     };
 
+    // const handleDragEnd = (event: DragEndEvent) => {
+    //     const { active, over } = event;
+    //     if (!over) return;
+
+    //     const draggedPlayer = active.data.current as Applicant;
+    //     const destinationId = over.id.toString();
+
+    //     setApplicants(prev => prev.filter(p => p.email !== draggedPlayer.email));
+    //     setBlueTeamSlots(prev => {
+    //         const newTeam = { ...prev };
+    //         for (const pos of POSITIONS) {
+    //             if (newTeam[pos]?.email === draggedPlayer.email) {
+    //                 newTeam[pos] = null;
+    //                 break;
+    //             }
+    //         }
+    //         return newTeam;
+    //     });
+    //     setRedTeamSlots(prev => {
+    //         const newTeam = { ...prev };
+    //         for (const pos of POSITIONS) {
+    //             if (newTeam[pos]?.email === draggedPlayer.email) {
+    //                 newTeam[pos] = null;
+    //                 break;
+    //             }
+    //         }
+    //         return newTeam;
+    //     });
+
+    //     if (destinationId === 'applicants') {
+    //         setApplicants(prev => {
+    //             if (prev.some(p => p.email === draggedPlayer.email)) return prev;
+    //             return [...prev, draggedPlayer];
+    //         });
+    //     } else if (destinationId.includes('-')) {
+    //         const [destinationTeamId, destinationPositionName] = destinationId.split('-');
+
+    //         const targetSetState = destinationTeamId === 'blueTeam' ? setBlueTeamSlots : setRedTeamSlots;
+    //         targetSetState(prev => {
+    //             const newTeam = { ...prev };
+    //             const existingPlayerInSlot = newTeam[destinationPositionName];
+
+    //             newTeam[destinationPositionName] = draggedPlayer;
+
+    //             if (existingPlayerInSlot) {
+    //                 // 참가자 목록에 추가하기 전에 중복 확인
+    //                 setApplicants(oldApplicants => {
+    //                     // 이미 목록에 있으면 추가하지 않고 그대로 반환
+    //                     if (oldApplicants.some(p => p.email === existingPlayerInSlot.email)) {
+    //                         return oldApplicants;
+    //                     }
+    //                     // 목록에 없으면 추가
+    //                     return [...oldApplicants, existingPlayerInSlot];
+    //                 });
+    //             }
+    //             return newTeam;
+    //         });
+    //     }
+    // };
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
-        if (!over) return;
+        if (!over || !scrim) return;
 
         const draggedPlayer = active.data.current as Applicant;
         const destinationId = over.id.toString();
 
-        setApplicants(prev => prev.filter(p => p.email !== draggedPlayer.email));
-        setBlueTeamSlots(prev => {
-            const newTeam = { ...prev };
+        // 1. 현재 상태를 복사하여 새로운 상태 변수 생성
+        let newApplicants = [...applicants];
+        let newBlueTeamSlots = { ...blueTeamSlots };
+        let newRedTeamSlots = { ...redTeamSlots };
+
+        // 2. 드래그된 플레이어를 원래 위치에서 제거
+        const applicantIndex = newApplicants.findIndex(p => p.email === draggedPlayer.email);
+        if (applicantIndex > -1) {
+            newApplicants.splice(applicantIndex, 1);
+        } else {
             for (const pos of POSITIONS) {
-                if (newTeam[pos]?.email === draggedPlayer.email) {
-                    newTeam[pos] = null;
-                    break;
+                if (newBlueTeamSlots[pos]?.email === draggedPlayer.email) {
+                    newBlueTeamSlots[pos] = null;
+                }
+                if (newRedTeamSlots[pos]?.email === draggedPlayer.email) {
+                    newRedTeamSlots[pos] = null;
                 }
             }
-            return newTeam;
-        });
-        setRedTeamSlots(prev => {
-            const newTeam = { ...prev };
-            for (const pos of POSITIONS) {
-                if (newTeam[pos]?.email === draggedPlayer.email) {
-                    newTeam[pos] = null;
-                    break;
-                }
-            }
-            return newTeam;
-        });
-
-        if (destinationId === 'applicants') {
-            setApplicants(prev => {
-                if (prev.some(p => p.email === draggedPlayer.email)) return prev;
-                return [...prev, draggedPlayer];
-            });
-        } else if (destinationId.includes('-')) {
-            const [destinationTeamId, destinationPositionName] = destinationId.split('-');
-
-            const targetSetState = destinationTeamId === 'blueTeam' ? setBlueTeamSlots : setRedTeamSlots;
-            targetSetState(prev => {
-                const newTeam = { ...prev };
-                const existingPlayerInSlot = newTeam[destinationPositionName];
-
-                newTeam[destinationPositionName] = draggedPlayer;
-
-                if (existingPlayerInSlot) {
-                    // 참가자 목록에 추가하기 전에 중복 확인
-                    setApplicants(oldApplicants => {
-                        // 이미 목록에 있으면 추가하지 않고 그대로 반환
-                        if (oldApplicants.some(p => p.email === existingPlayerInSlot.email)) {
-                            return oldApplicants;
-                        }
-                        // 목록에 없으면 추가
-                        return [...oldApplicants, existingPlayerInSlot];
-                    });
-                }
-                return newTeam;
-            });
         }
+
+        // 3. 목적지에 플레이어 추가
+        if (destinationId === 'applicants') {
+            newApplicants.push(draggedPlayer);
+        }
+        // 일반/피어리스 모드: 포지션 슬롯에 드롭
+        else if (destinationId.includes('-')) {
+            const [destTeamId, destPos] = destinationId.split('-');
+            const targetSlots = destTeamId === 'blueTeam' ? newBlueTeamSlots : newRedTeamSlots;
+
+            const existingPlayer = targetSlots[destPos];
+            if (existingPlayer) {
+                newApplicants.push(existingPlayer);
+            }
+            targetSlots[destPos] = draggedPlayer;
+        }
+        // 칼바람 모드: 팀 컬럼에 드롭
+        else if (scrim.scrimType === '칼바람' && (destinationId === 'blueTeam' || destinationId === 'redTeam')) {
+            const targetSlots = destinationId === 'blueTeam' ? newBlueTeamSlots : newRedTeamSlots;
+            const teamSize = Object.values(targetSlots).filter(Boolean).length;
+
+            if (teamSize < 5) {
+                const emptySlot = POSITIONS.find(pos => !targetSlots[pos]);
+                if (emptySlot) {
+                    targetSlots[emptySlot] = draggedPlayer;
+                }
+            } else {
+                // 팀이 꽉 찼으면, 다시 참가자 목록으로 되돌림
+                newApplicants.push(draggedPlayer);
+            }
+        }
+
+        // 4. 모든 상태를 한 번에 업데이트
+        setApplicants(newApplicants);
+        setBlueTeamSlots(newBlueTeamSlots);
+        setRedTeamSlots(newRedTeamSlots);
     };
+
 
     const handleRemovePlayerFromSlot = (player: Applicant, position: string, teamId: string) => {
         if (teamId === 'blueTeam') {
@@ -682,18 +784,25 @@ export default function ScrimDetailPage() {
             if (prev.some(p => p.name === 'ALL')) {
                 return prev;
             }
+
             const isSelected = prev.some(p => p.name === posName);
             let newPositions: RankedPosition[];
+
             if (isSelected) {
+                // 이미 선택된 포지션을 클릭하면 제거
                 newPositions = prev.filter(p => p.name !== posName);
             } else {
+                // 3개 미만일 때만 새로 추가
                 if (prev.length < 3) {
+                    // rank는 잠시 0으로 두고, 아래에서 순서대로 재할당
                     newPositions = [...prev, { name: posName, rank: 0 }];
                 } else {
-                    return prev;
+                    return prev; // 3개 꽉 찼으면 아무것도 안 함
                 }
             }
-            return newPositions.sort((a, b) => a.rank - b.rank).map((p, index) => ({
+
+            // 배열의 순서(index)에 따라 1, 2, 3 순위를 다시 매김
+            return newPositions.map((p, index) => ({
                 ...p,
                 rank: index + 1
             }));
@@ -810,6 +919,17 @@ export default function ScrimDetailPage() {
                     >
                         {currentApplicantsForDisplay.length < 10 ? `팀 구성을 위해 ${10 - currentApplicantsForDisplay.length}명이 더 필요합니다` : '팀 구성 시작하기'}
                     </button>
+                    {/* ✅ [추가] 테스트 참가자 채우기 버튼 */}
+                    <button
+                        onClick={() => {
+                            if (confirm('참가자 목록을 10명의 테스트 유저로 채웁니다. 기존 참가자는 모두 사라집니다.')) {
+                                handleScrimAction('add_dummy_applicants');
+                            }
+                        }}
+                        className="py-2 px-6 bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold"
+                    >
+                        테스트 참가자 채우기
+                    </button>
                 </div>
             )}
 
@@ -818,43 +938,113 @@ export default function ScrimDetailPage() {
                     <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                             <TeamColumn id="applicants" title="남은 참가자" players={applicants} scrimType={scrim.scrimType} />
+
+                            {/* ✅ [수정] 칼바람 모드일 때와 아닐 때 UI를 분리합니다. */}
+                            {scrim.scrimType === '칼바람' ? (
+                                <>
+                                    <TeamColumn id="blueTeam" title="블루팀" players={Object.values(blueTeamSlots).filter(Boolean) as Applicant[]} color="blue" scrimType={scrim.scrimType} />
+                                    <TeamColumn id="redTeam" title="레드팀" players={Object.values(redTeamSlots).filter(Boolean) as Applicant[]} color="red" scrimType={scrim.scrimType} />
+                                </>
+                            ) : (
+                                <>
+                                    <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-blue-500">
+                                        <h3 className={`text-xl font-bold mb-4 text-center text-white`}>블루팀 ({Object.values(blueTeamSlots).filter(p => p !== null).length})</h3>
+                                        <div className="space-y-2 min-h-[300px]">
+                                            {POSITIONS.map(pos => (
+                                                <PositionSlot
+                                                    key={`blueTeam-${pos}`}
+                                                    id={`blueTeam-${pos}`}
+                                                    positionName={pos}
+                                                    player={blueTeamSlots[pos]}
+                                                    teamId="blueTeam"
+                                                    onRemovePlayer={handleRemovePlayerFromSlot}
+                                                    scrimType={scrim.scrimType}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-red-500">
+                                        <h3 className={`text-xl font-bold mb-4 text-center text-white`}>레드팀 ({Object.values(redTeamSlots).filter(p => p !== null).length})</h3>
+                                        <div className="space-y-2 min-h-[300px]">
+                                            {POSITIONS.map(pos => (
+                                                <PositionSlot
+                                                    key={`redTeam-${pos}`}
+                                                    id={`redTeam-${pos}`}
+                                                    positionName={pos}
+                                                    player={redTeamSlots[pos]}
+                                                    teamId="redTeam"
+                                                    onRemovePlayer={handleRemovePlayerFromSlot}
+                                                    scrimType={scrim.scrimType}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </DndContext>
+                    {/* <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                            <TeamColumn id="applicants" title="남은 참가자" players={applicants} scrimType={scrim.scrimType} />
                             <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-blue-500">
                                 <h3 className={`text-xl font-bold mb-4 text-center text-white`}>블루팀 ({Object.values(blueTeamSlots).filter(p => p !== null).length})</h3>
                                 <div className="space-y-2 min-h-[300px]">
-                                    {POSITIONS.map(pos => (
-                                        <PositionSlot
-                                            key={`blueTeam-${pos}`}
-                                            id={`blueTeam-${pos}`}
-                                            positionName={pos}
-                                            player={blueTeamSlots[pos]}
-                                            teamId="blueTeam"
-                                            onRemovePlayer={handleRemovePlayerFromSlot}
-                                            scrimType={scrim.scrimType}
-                                        />
-                                    ))}
+                                    {scrim.scrimType === '칼바람' ? (
+                                        // 칼바람 모드: 포지션 없이 플레이어 카드만 렌더링
+                                        scrim.blueTeam.map(player => (
+                                            <PlayerCard key={player.email} player={player} scrimType={scrim.scrimType} />
+                                        ))
+                                    ) : (
+                                        // 일반/피어리스 모드: 포지션 슬롯 렌더링
+                                        POSITIONS.map(pos => (
+                                            <PositionSlot
+                                                key={`blueTeam-${pos}`}
+                                                id={`blueTeam-${pos}`}
+                                                positionName={pos}
+                                                player={blueTeamSlots[pos]}
+                                                teamId="blueTeam"
+                                                onRemovePlayer={handleRemovePlayerFromSlot}
+                                                scrimType={scrim.scrimType}
+                                            />
+                                        ))
+                                    )}
                                 </div>
                             </div>
                             <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-red-500">
                                 <h3 className={`text-xl font-bold mb-4 text-center text-white`}>레드팀 ({Object.values(redTeamSlots).filter(p => p !== null).length})</h3>
                                 <div className="space-y-2 min-h-[300px]">
-                                    {POSITIONS.map(pos => (
-                                        <PositionSlot
-                                            key={`redTeam-${pos}`}
-                                            id={`redTeam-${pos}`}
-                                            positionName={pos}
-                                            player={redTeamSlots[pos]}
-                                            teamId="redTeam"
-                                            onRemovePlayer={handleRemovePlayerFromSlot}
-                                            scrimType={scrim.scrimType}
-                                        />
-                                    ))}
+                                    {scrim.scrimType === '칼바람' ? (
+                                        // 칼바람 모드: 포지션 없이 플레이어 카드만 렌더링
+                                        scrim.redTeam.map(player => (
+                                            <PlayerCard key={player.email} player={player} scrimType={scrim.scrimType} />
+                                        ))
+                                    ) : (
+                                        // 일반/피어리스 모드: 포지션 슬롯 렌더링
+                                        POSITIONS.map(pos => (
+                                            <PositionSlot
+                                                key={`redTeam-${pos}`}
+                                                id={`redTeam-${pos}`}
+                                                positionName={pos}
+                                                player={redTeamSlots[pos]}
+                                                teamId="redTeam"
+                                                onRemovePlayer={handleRemovePlayerFromSlot}
+                                                scrimType={scrim.scrimType}
+                                            />
+                                        ))
+                                    )}
                                 </div>
                             </div>
                         </div>
-                    </DndContext>
-                    
+                    </DndContext> */}
                     <div className="text-center space-x-4 mt-6">
                         <button onClick={() => handleScrimAction('start_game')} className="py-2 px-8 bg-green-600 hover:bg-green-700 rounded-md font-semibold">경기 시작</button>
+                        {/* ✅ [추가] 랜덤 팀 구성 버튼 */}
+                        <button
+                            onClick={handleRandomizeTeams}
+                            className="py-2 px-8 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold"
+                        >
+                            랜덤 팀
+                        </button>
                         <button
                             onClick={() => handleScrimAction('reset_to_recruiting')}
                             className="py-2 px-8 bg-gray-600 hover:bg-gray-700 rounded-md font-semibold"
@@ -1058,7 +1248,6 @@ export default function ScrimDetailPage() {
                             ))}
                         </div>
                     </div>
-
                     {/* 임시 금지 목록 (fearlessUsedChampions) - 경기별로 묶어서 표시 */}
                     {scrim.scrimType === '피어리스' && scrim.fearlessUsedChampions && scrim.fearlessUsedChampions.length > 0 && (
                         <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-purple-700">
@@ -1067,7 +1256,7 @@ export default function ScrimDetailPage() {
                             </h3>
                             <div className="space-y-4">
                                 {/* ✅ [수정] (scrim.fearlessUsedChampions || []) 로 변경하여 에러 해결 */}
-                                {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) => 
+                                {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) =>
                                     (scrim.fearlessUsedChampions || []).slice(i * 10, i * 10 + 10)
                                 ).map((gameChampions, index) => (
                                     <div key={index} className="p-3 bg-gray-700/50 rounded-md">
@@ -1089,14 +1278,14 @@ export default function ScrimDetailPage() {
 
                     {canManage && (
                         <div className="text-center space-x-4 mt-6">
-                            <button 
-                                onClick={() => handleScrimAction('end_game', { winningTeam: 'blue', scrimType: scrim.scrimType })} 
+                            <button
+                                onClick={() => handleScrimAction('end_game', { winningTeam: 'blue', scrimType: scrim.scrimType })}
                                 className="py-2 px-8 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold"
                             >
                                 블루팀 승리
                             </button>
-                            <button 
-                                onClick={() => handleScrimAction('end_game', { winningTeam: 'red', scrimType: scrim.scrimType })} 
+                            <button
+                                onClick={() => handleScrimAction('end_game', { winningTeam: 'red', scrimType: scrim.scrimType })}
                                 className="py-2 px-8 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
                             >
                                 레드팀 승리
@@ -1106,7 +1295,7 @@ export default function ScrimDetailPage() {
                                 onClick={() => handleScrimAction('reset_to_team_building')}
                                 className="py-2 px-8 bg-orange-600 hover:bg-orange-700 rounded-md font-semibold"
                             >
-                                팀 구성 상태로 되돌리기
+                                팀 구성으로 이동
                             </button>
                             {/* 피어리스일 때만 초기화 버튼 표시 (경기중 상태) */}
                             {scrim.scrimType === '피어리스' && (
@@ -1411,43 +1600,63 @@ export default function ScrimDetailPage() {
                         {/* 블루팀 */}
                         <div className="bg-gray-800 p-4 rounded-lg border-2 border-blue-500">
                             <h3 className="text-xl font-bold mb-4 text-center text-blue-400">블루팀</h3>
-                            <div className="space-y-2">
-                                {/* ✅ [수정] 포지션 순서대로 정렬하는 .sort() 함수 추가 */}
-                                {(scrim.blueTeam || [])
-                                    // ✅ [수정] .sort() 함수 안에서 || '' 를 추가하여 undefined 가능성을 제거합니다.
-                                    .sort((a, b) => POSITIONS.indexOf(a.assignedPosition || '') - POSITIONS.indexOf(b.assignedPosition || ''))
-                                    .map(player => (
-                                        <div key={player.email} className="flex items-center justify-between p-2 bg-gray-700/50 rounded">
-                                            <span className="font-semibold">{player.nickname} {scrim.scrimType !== '칼바람' && `(${player.tier})`}</span>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-yellow-400">{player.champion}</span>
-                                                {player.championImageUrl && (
-                                                    <img src={player.championImageUrl} alt={player.champion} className="w-8 h-8 rounded-md" />
-                                                )}
+                            <div className="space-y-3">
+                                {/* ✅ [수정] scrim.blueTeam 대신 blueTeamSlots를 사용하고, POSITIONS 기준으로 렌더링 */}
+                                {POSITIONS.map(pos => {
+                                    const player = blueTeamSlots[pos];
+                                    if (!player) return <div key={pos} className="h-[68px]"></div>; // 빈 슬롯 높이 유지
+                                    return (
+                                        <div key={player.email} className="flex items-center gap-4 bg-gray-700/50 p-3 rounded-md">
+                                            {player.championImageUrl ? (
+                                                <Image
+                                                    src={player.championImageUrl}
+                                                    alt={player.champion || '챔피언'}
+                                                    width={48}
+                                                    height={48}
+                                                    className="rounded-md"
+                                                />
+                                            ) : (
+                                                <div className="w-12 h-12 bg-gray-600 rounded-md flex-shrink-0"></div>
+                                            )}
+                                            <div className="flex-grow">
+                                                <p className="font-bold text-lg">{player.nickname}</p>
+                                                <p className="text-sm text-gray-400">{player.tier}</p>
                                             </div>
+                                            <span className="font-semibold text-yellow-400">{player.champion}</span>
                                         </div>
-                                    ))}
+                                    );
+                                })}
                             </div>
                         </div>
                         {/* 레드팀 */}
                         <div className="bg-gray-800 p-4 rounded-lg border-2 border-red-500">
                             <h3 className="text-xl font-bold mb-4 text-center text-red-500">레드팀</h3>
-                            <div className="space-y-2">
-                                {/* ✅ [수정] 포지션 순서대로 정렬하는 .sort() 함수 추가 */}
-                                {(scrim.redTeam || [])
-                                    // ✅ [수정] .sort() 함수 안에서 || '' 를 추가하여 undefined 가능성을 제거합니다.
-                                    .sort((a, b) => POSITIONS.indexOf(a.assignedPosition || '') - POSITIONS.indexOf(b.assignedPosition || ''))
-                                    .map(player => (
-                                        <div key={player.email} className="flex items-center justify-between p-2 bg-gray-700/50 rounded">
-                                            <span className="font-semibold">{player.nickname} {scrim.scrimType !== '칼바람' && `(${player.tier})`}</span>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-yellow-400">{player.champion}</span>
-                                                {player.championImageUrl && (
-                                                    <img src={player.championImageUrl} alt={player.champion} className="w-8 h-8 rounded-md" />
-                                                )}
+                            <div className="space-y-3">
+                                {/* ✅ [수정] scrim.redTeam 대신 redTeamSlots를 사용하고, POSITIONS 기준으로 렌더링 */}
+                                {POSITIONS.map(pos => {
+                                    const player = redTeamSlots[pos];
+                                    if (!player) return <div key={pos} className="h-[68px]"></div>; // 빈 슬롯 높이 유지
+                                    return (
+                                        <div key={player.email} className="flex items-center gap-4 bg-gray-700/50 p-3 rounded-md">
+                                            {player.championImageUrl ? (
+                                                <Image
+                                                    src={player.championImageUrl}
+                                                    alt={player.champion || '챔피언'}
+                                                    width={48}
+                                                    height={48}
+                                                    className="rounded-md"
+                                                />
+                                            ) : (
+                                                <div className="w-12 h-12 bg-gray-600 rounded-md flex-shrink-0"></div>
+                                            )}
+                                            <div className="flex-grow">
+                                                <p className="font-bold text-lg">{player.nickname}</p>
+                                                <p className="text-sm text-gray-400">{player.tier}</p>
                                             </div>
+                                            <span className="font-semibold text-yellow-400">{player.champion}</span>
                                         </div>
-                                    ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
@@ -1460,7 +1669,7 @@ export default function ScrimDetailPage() {
                             </h3>
                             <div className="space-y-4">
                                 {/* ✅ [수정] (scrim.fearlessUsedChampions || []) 로 변경하여 에러 해결 */}
-                                {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) => 
+                                {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) =>
                                     (scrim.fearlessUsedChampions || []).slice(i * 10, i * 10 + 10)
                                 ).map((gameChampions, index) => (
                                     <div key={index} className="p-3 bg-gray-700/50 rounded-md">
@@ -1486,13 +1695,13 @@ export default function ScrimDetailPage() {
                                 onClick={() => handleScrimAction('reset_to_team_building')}
                                 className="py-2 px-6 bg-orange-600 hover:bg-orange-700 rounded-md font-semibold text-sm"
                             >
-                                팀 구성으로 되돌리기
+                                팀 구성으로 이동
                             </button>
                             <button
                                 onClick={() => handleScrimAction('reset_to_recruiting')}
                                 className="py-2 px-6 bg-gray-600 hover:bg-gray-700 rounded-md font-semibold text-sm"
                             >
-                                모집중으로 되돌리기
+                                모집중으로 이동
                             </button>
                             {scrim.scrimType === '피어리스' && (
                                 <button
@@ -1508,6 +1717,6 @@ export default function ScrimDetailPage() {
 
             )}
 
-        </main >
+        </main>
     )
 }

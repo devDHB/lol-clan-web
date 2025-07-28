@@ -22,6 +22,7 @@ interface MatchupStats {
         };
     };
 }
+// ✅ [수정] UserStats 타입에 recentGames 추가
 interface UserStats {
     totalGames: number;
     totalWins: number;
@@ -32,10 +33,17 @@ interface UserStats {
     positions: Record<string, PositionStats>;
     championStats: ChampionStats;
     matchups: MatchupStats;
+    recentGames: {
+        champion: string;
+        championImageUrl: string | null;
+        win: boolean;
+        matchId: string;
+    }[];
 }
 interface ChampionInfo {
     id: string;
     name: string;
+    imageUrl: string; // 이미지 URL 포함
 }
 interface UserInfo {
     email: string;
@@ -46,11 +54,11 @@ interface UserInfo {
 export default function ProfilePage() {
     const params = useParams();
     const router = useRouter();
-    const email = Array.isArray(params.email) ? params.email[0] : params.email;
+    const email = Array.isArray(params.email) ? params.email[0] : params.email ? decodeURIComponent(params.email) : undefined;
 
     const [stats, setStats] = useState<UserStats | null>(null);
     const [userProfile, setUserProfile] = useState<{ nickname: string } | null>(null);
-    const [championMap, setChampionMap] = useState<Map<string, string>>(new Map());
+    const [championMap, setChampionMap] = useState<Map<string, { id: string; imageUrl: string }>>(new Map());
     const [allUsers, setAllUsers] = useState<UserInfo[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
@@ -78,7 +86,7 @@ export default function ProfilePage() {
 
             if (championsRes.ok) {
                 const championsData: ChampionInfo[] = await championsRes.json();
-                setChampionMap(new Map(championsData.map(c => [c.name, c.id])));
+                setChampionMap(new Map(championsData.map(c => [c.name, { id: c.id, imageUrl: c.imageUrl }])));
             }
             if (allUsersRes.ok) {
                 setAllUsers(await allUsersRes.json());
@@ -135,96 +143,136 @@ export default function ProfilePage() {
                 <p className="text-lg text-gray-400">개인 전적 기록</p>
             </header>
 
-            <section className="mb-6 bg-gray-800 p-6 rounded-lg">
-                <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">종합 전적 (일반/피어리스)</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    <div><p className="text-sm text-gray-400">총 게임</p><p className="text-3xl font-bold">{stats.totalGames}</p></div>
-                    <div><p className="text-sm text-gray-400">승리</p><p className="text-3xl font-bold text-green-400">{stats.totalWins}</p></div>
-                    <div><p className="text-sm text-gray-400">패배</p><p className="text-3xl font-bold text-red-400">{stats.totalLosses}</p></div>
-                    <div><p className="text-sm text-gray-400">승률</p><p className="text-3xl font-bold">{calculateWinRate(stats.totalWins, stats.totalLosses)}</p></div>
-                </div>
-            </section>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* 왼쪽 컬럼: 종합, 칼바람, 포지션 전적 */}
+                <div className="lg:col-span-2 space-y-8">
+                    <section className="bg-gray-800 p-6 rounded-lg">
+                        <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">종합 전적 (일반/피어리스)</h2>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                            <div><p className="text-sm text-gray-400">총 게임</p><p className="text-3xl font-bold">{stats.totalGames}</p></div>
+                            <div><p className="text-sm text-gray-400">승리</p><p className="text-3xl font-bold text-green-400">{stats.totalWins}</p></div>
+                            <div><p className="text-sm text-gray-400">패배</p><p className="text-3xl font-bold text-red-400">{stats.totalLosses}</p></div>
+                            <div><p className="text-sm text-gray-400">승률</p><p className="text-3xl font-bold">{calculateWinRate(stats.totalWins, stats.totalLosses)}</p></div>
+                        </div>
+                    </section>
 
-            {stats.aramGames > 0 && (
-                <section className="mb-12 bg-gray-800 p-6 rounded-lg">
-                    <h2 className="text-2xl font-bold mb-4 border-l-4 border-teal-400 pl-4">칼바람 나락 전적</h2>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                        <div><p className="text-sm text-gray-400">총 게임</p><p className="text-3xl font-bold">{stats.aramGames}</p></div>
-                        <div><p className="text-sm text-gray-400">승리</p><p className="text-3xl font-bold text-green-400">{stats.aramWins}</p></div>
-                        <div><p className="text-sm text-gray-400">패배</p><p className="text-3xl font-bold text-red-400">{stats.aramLosses}</p></div>
-                        <div><p className="text-sm text-gray-400">승률</p><p className="text-3xl font-bold">{calculateWinRate(stats.aramWins, stats.aramLosses)}</p></div>
+                    {stats.aramGames > 0 && (
+                        <section className="bg-gray-800 p-6 rounded-lg">
+                            <h2 className="text-2xl font-bold mb-4 border-l-4 border-teal-400 pl-4">칼바람 나락 전적</h2>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                                <div><p className="text-sm text-gray-400">총 게임</p><p className="text-3xl font-bold">{stats.aramGames}</p></div>
+                                <div><p className="text-sm text-gray-400">승리</p><p className="text-3xl font-bold text-green-400">{stats.aramWins}</p></div>
+                                <div><p className="text-sm text-gray-400">패배</p><p className="text-3xl font-bold text-red-400">{stats.aramLosses}</p></div>
+                                <div><p className="text-sm text-gray-400">승률</p><p className="text-3xl font-bold">{calculateWinRate(stats.aramWins, stats.aramLosses)}</p></div>
+                            </div>
+                        </section>
+                    )}
+
+                    <section className="bg-gray-800 p-6 rounded-lg">
+                        <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">포지션별 승패</h2>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead><tr className="border-b border-gray-700"><th className="p-2">포지션</th><th className="p-2 text-center">승</th><th className="p-2 text-center">패</th><th className="p-2 text-center">승률</th><th className="p-2 text-center">게임 수</th></tr></thead>
+                                <tbody>
+                                    {Object.entries(stats.positions).map(([pos, data]) => (
+                                        <tr key={pos} className="border-b border-gray-700/50">
+                                            <td className="p-2 font-bold">{pos}</td>
+                                            <td className="p-2 text-center text-green-400">{data.wins}</td>
+                                            <td className="p-2 text-center text-red-400">{data.losses}</td>
+                                            <td className="p-2 text-center">{calculateWinRate(data.wins, data.losses)}</td>
+                                            <td className="p-2 text-center">{data.wins + data.losses}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+
+                {/* ✅ [추가] 오른쪽 컬럼: 최근 10경기 */}
+                <div className="lg:col-span-1 space-y-8">
+                    <section className="bg-gray-800 p-6 rounded-lg">
+                        <h2 className="text-2xl font-bold mb-4 border-l-4 border-purple-400 pl-4">최근 10경기</h2>
+                        <div className="flex flex-col gap-3">
+                            {stats.recentGames.length > 0 ? (
+                                stats.recentGames.map((game, index) => (
+                                    <Link href={`/matches/${game.matchId}`} key={index} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-md hover:bg-gray-700/80 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            {game.championImageUrl ? (
+                                                <Image src={game.championImageUrl} alt={game.champion} width={36} height={36} className="rounded-full" />
+                                            ) : (
+                                                <div className="w-9 h-9 bg-gray-600 rounded-full" />
+                                            )}
+                                            <span className="font-semibold">{game.champion}</span>
+                                        </div>
+                                        <span className={`font-bold px-3 py-1 rounded-md text-sm ${game.win ? 'bg-blue-500/80 text-white' : 'bg-red-500/80 text-white'}`}>
+                                            {game.win ? '승리' : '패배'}
+                                        </span>
+                                    </Link>
+                                ))
+                            ) : (
+                                <p className="text-gray-400 text-center">최근 경기 기록이 없습니다.</p>
+                            )}
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <div className="mt-8 space-y-8">
+                <section className="bg-gray-800 p-6 rounded-lg">
+                    <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">챔피언별 승패</h2>
+                    <div className="overflow-x-auto max-h-[400px]">
+                        <table className="w-full text-left">
+                            <thead className="sticky top-0 bg-gray-800"><tr className="border-b border-gray-700"><th className="p-2">챔피언</th><th className="p-2 text-center">승</th><th className="p-2 text-center">패</th><th className="p-2 text-center">승률</th><th className="p-2 text-center">게임 수</th></tr></thead>
+                            <tbody>
+                                {sortedChampions.map(([name, data]) => {
+                                    const champInfo = championMap.get(name);
+                                    return (
+                                        <tr key={name} className="border-b border-gray-700/50">
+                                            <td className="p-2 flex items-center gap-3">
+                                                {champInfo?.imageUrl && (
+                                                    <Image src={champInfo.imageUrl} alt={name} width={32} height={32} className="rounded-full" />
+                                                )}
+                                                <span className="font-semibold">{name}</span>
+                                            </td>
+                                            <td className="p-2 text-center text-green-400">{data.wins}</td>
+                                            <td className="p-2 text-center text-red-400">{data.losses}</td>
+                                            <td className="p-2 text-center">{calculateWinRate(data.wins, data.losses)}</td>
+                                            <td className="p-2 text-center">{data.wins + data.losses}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </section>
-            )}
 
-            <section className="mb-12 bg-gray-800 p-6 rounded-lg">
-                <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">포지션별 승패</h2>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead><tr className="border-b border-gray-700"><th className="p-2">포지션</th><th className="p-2 text-center">승</th><th className="p-2 text-center">패</th><th className="p-2 text-center">승률</th><th className="p-2 text-center">게임 수</th></tr></thead>
-                        <tbody>
-                            {Object.entries(stats.positions).map(([pos, data]) => (
-                                <tr key={pos} className="border-b border-gray-700/50">
-                                    <td className="p-2 font-bold">{pos}</td>
-                                    <td className="p-2 text-center text-green-400">{data.wins}</td>
-                                    <td className="p-2 text-center text-red-400">{data.losses}</td>
-                                    <td className="p-2 text-center">{calculateWinRate(data.wins, data.losses)}</td>
-                                    <td className="p-2 text-center">{data.wins + data.losses}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section className="mb-12 bg-gray-800 p-6 rounded-lg">
-                <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">챔피언별 승패</h2>
-                <div className="overflow-x-auto max-h-[400px]">
-                    <table className="w-full text-left">
-                        <thead className="sticky top-0 bg-gray-800"><tr className="border-b border-gray-700"><th className="p-2">챔피언</th><th className="p-2 text-center">승</th><th className="p-2 text-center">패</th><th className="p-2 text-center">승률</th><th className="p-2 text-center">게임 수</th></tr></thead>
-                        <tbody>
-                            {sortedChampions.map(([name, data]) => (
-                                <tr key={name} className="border-b border-gray-700/50">
-                                    <td className="p-2 flex items-center gap-3">
-                                        <Image src={`http://ddragon.leagueoflegends.com/cdn/14.14.1/img/champion/${championMap.get(name) || name}.png`} alt={name} width={32} height={32} className="rounded-full" />
-                                        <span className="font-semibold">{name}</span>
-                                    </td>
-                                    <td className="p-2 text-center text-green-400">{data.wins}</td>
-                                    <td className="p-2 text-center text-red-400">{data.losses}</td>
-                                    <td className="p-2 text-center">{calculateWinRate(data.wins, data.losses)}</td>
-                                    <td className="p-2 text-center">{data.wins + data.losses}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            <section className="bg-gray-800 p-6 rounded-lg">
-                <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">상대 전적 (포지션별)</h2>
-                {Object.keys(stats.matchups).length > 0 ? (
-                    Object.entries(stats.matchups).map(([position, opponents]) => (
-                        <div key={position} className="mb-6">
-                            <h3 className="text-xl font-semibold text-yellow-500 mb-3">{position}</h3>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead className="sticky top-0 bg-gray-800"><tr className="border-b border-gray-700"><th className="p-2">상대</th><th className="p-2 text-center">승</th><th className="p-2 text-center">패</th><th className="p-2 text-center">승률</th></tr></thead>
-                                    <tbody>
-                                        {Object.entries(opponents).sort(([, a], [, b]) => (b.wins + b.losses) - (a.wins + a.losses)).map(([email, data]) => (
-                                            <tr key={email} className="border-b border-gray-700/50">
-                                                <td className="p-2">{data.nickname}</td>
-                                                <td className="p-2 text-center text-green-400">{data.wins}</td>
-                                                <td className="p-2 text-center text-red-400">{data.losses}</td>
-                                                <td className="p-2 text-center">{calculateWinRate(data.wins, data.losses)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                <section className="bg-gray-800 p-6 rounded-lg">
+                    <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">상대 전적 (포지션별)</h2>
+                    {Object.keys(stats.matchups).length > 0 ? (
+                        Object.entries(stats.matchups).map(([position, opponents]) => (
+                            <div key={position} className="mb-6">
+                                <h3 className="text-xl font-semibold text-yellow-500 mb-3">{position}</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="sticky top-0 bg-gray-800"><tr className="border-b border-gray-700"><th className="p-2">상대</th><th className="p-2 text-center">승</th><th className="p-2 text-center">패</th><th className="p-2 text-center">승률</th></tr></thead>
+                                        <tbody>
+                                            {Object.entries(opponents).sort(([, a], [, b]) => (b.wins + b.losses) - (a.wins + a.losses)).map(([email, data]) => (
+                                                <tr key={email} className="border-b border-gray-700/50">
+                                                    <td className="p-2">{data.nickname}</td>
+                                                    <td className="p-2 text-center text-green-400">{data.wins}</td>
+                                                    <td className="p-2 text-center text-red-400">{data.losses}</td>
+                                                    <td className="p-2 text-center">{calculateWinRate(data.wins, data.losses)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
-                    ))
-                ) : (<p className="text-gray-400">기록된 상대 전적이 없습니다.</p>)}
-            </section>
+                        ))
+                    ) : (<p className="text-gray-400">기록된 상대 전적이 없습니다.</p>)}
+                </section>
+            </div>
         </main>
     );
 }

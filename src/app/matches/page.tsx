@@ -1,11 +1,10 @@
-// src/app/matches/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 
-// ⭐️ 1. 타입 정의 수정
+// 타입 정의: API 응답에 맞춰 creatorNickname 추가
 interface Match {
   matchId: string;
   scrimName: string;
@@ -13,13 +12,10 @@ interface Match {
   matchDate: string;
   scrimType: string;
   creatorEmail: string;
+  creatorNickname: string; // API가 직접 닉네임을 제공
 }
 
-interface UserMap {
-  [email: string]: string;
-}
-
-// ⭐️ scrimType에 따른 스타일 추가
+// 내전 타입별 스타일 정의
 const scrimTypeStyles: { [key: string]: string } = {
   '일반': 'border-blue-500/50 text-blue-300',
   '피어리스': 'border-purple-500/50 text-purple-300',
@@ -29,40 +25,41 @@ const scrimTypeStyles: { [key: string]: string } = {
 export default function MatchesPage() {
   const { user } = useAuth();
   const [matches, setMatches] = useState<Match[]>([]);
-  const [userMap, setUserMap] = useState<UserMap>({}); // ⭐️ 유저 맵 상태 추가
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // ⭐️ 2. 유저 정보와 매치 정보를 함께 가져오기
-        const [matchesRes, usersRes] = await Promise.all([
-          fetch('/api/matches'),
-          fetch('/api/users')
-        ]);
-
-        if (!matchesRes.ok) throw new Error('Failed to fetch matches');
-        const matchesData = await matchesRes.json();
-        setMatches(matchesData);
-
-        if (usersRes.ok) {
-          const usersData: { email: string; nickname: string }[] = await usersRes.json();
-          const map: UserMap = {};
-          usersData.forEach(u => { map[u.email] = u.nickname; });
-          setUserMap(map);
-        }
-
-      } catch (error) {
-        console.error('Failed to fetch data:', error);
-      } finally {
-        setLoading(false);
+  // API 호출을 하나로 단순화
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const matchesRes = await fetch('/api/matches');
+      if (!matchesRes.ok) {
+        throw new Error('Failed to fetch matches');
       }
-    };
-    fetchData();
+      const matchesData = await matchesRes.json();
+      setMatches(matchesData);
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (!user) { /* ... 로그인 필요 UI (기존과 동일) ... */ }
-  if (loading) { /* ... 로딩 UI (기존과 동일) ... */ }
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  if (loading) {
+    return <main className="flex justify-center items-center min-h-screen bg-gray-900 text-white">로딩 중...</main>;
+  }
+
+  if (!user) {
+    return (
+      <main className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+        <p>로그인이 필요합니다.</p>
+        <Link href="/login" className="text-blue-400 hover:underline mt-4">로그인 페이지로 이동</Link>
+      </main>
+    );
+  }
 
   return (
     <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
@@ -73,11 +70,9 @@ export default function MatchesPage() {
       <div className="space-y-4">
         {matches.length > 0 ? (
           matches.map((match) => {
-            const hostNickname = userMap[match.creatorEmail] || match.creatorEmail.split('@')[0];
             const typeStyle = scrimTypeStyles[match.scrimType] || 'border-gray-500/50 text-gray-300';
 
             return (
-              // ⭐️ 3. 카드 내부 UI 전체 수정
               <Link key={match.matchId} href={`/matches/${match.matchId}`} className="block bg-gray-800 p-4 rounded-lg shadow-lg hover:bg-gray-700/50 transition-colors duration-300">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                   <div className='flex-grow'>
@@ -90,8 +85,9 @@ export default function MatchesPage() {
                     <span className={`text-sm font-semibold px-2 py-1 border rounded-full ${typeStyle}`}>
                       {match.scrimType}
                     </span>
+                    {/* API에서 받은 creatorNickname을 바로 사용 */}
                     <span className="text-sm text-gray-400 hidden md:block">
-                      주최: {hostNickname}
+                      주최: {match.creatorNickname}
                     </span>
                     <div className={`text-lg font-bold px-4 py-2 rounded-md ${match.winningTeam === 'blue' ? 'bg-blue-500/20 text-blue-300' : 'bg-red-500/20 text-red-300'}`}>
                       {match.winningTeam === 'blue' ? '블루팀 승리' : '레드팀 승리'}

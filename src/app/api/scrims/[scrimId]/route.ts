@@ -30,8 +30,8 @@ interface ScrimData {
     winningTeam?: 'blue' | 'red';
     scrimType: string;
 
-     // (일반/피어리스) 영구 전적 기록용 필드
-     matchChampionHistory?: {
+    // (일반/피어리스) 영구 전적 기록용 필드
+    matchChampionHistory?: {
         matchId: string;
         matchDate: admin.firestore.Timestamp | Date;
         blueTeamChampions: { playerEmail: string; champion: string; position: string; }[];
@@ -109,7 +109,7 @@ export async function GET(
         if (!scrimId) {
             return NextResponse.json({ error: '내전 ID가 필요합니다.' }, { status: 400 });
         }
-        
+
         // 1. 전체 챔피언 목록 (이미지 URL 포함)을 미리 가져옵니다.
         const allChampions = await getChampionList();
         const championImageMap = new Map(allChampions.map((c: ChampionInfo) => [c.name, c.imageUrl]));
@@ -133,7 +133,7 @@ export async function GET(
             data.blueTeam = addImageUrl(data.blueTeam);
             data.redTeam = addImageUrl(data.redTeam);
         }
-        
+
         // 3. 모든 Timestamp를 문자열로 변환합니다.
         const serializeData = (obj: any): any => {
             if (!obj) return obj;
@@ -148,7 +148,7 @@ export async function GET(
             }
             return obj;
         };
-        
+
         const finalData = serializeData({
             scrimId: doc.id,
             ...data,
@@ -162,48 +162,89 @@ export async function GET(
     }
 }
 
-// --- API 핸들러: PATCH (매치 정보 수정) ---
+
+// ✅ [수정] PATCH: 내전 제목과 경기 챔피언 수정을 모두 처리하는 통합 함수
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { matchId: string } }
+    { params }: { params: { scrimId: string } }
 ) {
     try {
-        const { matchId } = await params;
-        const { team, playerEmail, newChampion, requesterEmail } = await request.json();
+        const { scrimId } = await params;
+        const body = await request.json();
+        const { userEmail, newScrimName, team, playerEmail, newChampion, matchId } = body;
 
-        if (!matchId || !team || !playerEmail || !newChampion || !requesterEmail) {
+        if (!scrimId || !userEmail) {
             return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
         }
 
-        const hasPermission = await checkAdminPermission(requesterEmail);
+        const hasPermission = await checkAdminPermission(userEmail);
         if (!hasPermission) {
             return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 });
         }
 
-        const matchRef = db.collection('matches').doc(matchId);
-        const doc = await matchRef.get();
-        if (!doc.exists) {
-            return NextResponse.json({ error: '매치를 찾을 수 없습니다.' }, { status: 404 });
+        let updateMessage = '';
+
+        // 1. 내전 제목 수정 로직
+        if (newScrimName) {
+            const scrimRef = db.collection('scrims').doc(scrimId);
+            const doc = await scrimRef.get();
+            if (!doc.exists) {
+                return NextResponse.json({ error: '내전을 찾을 수 없습니다.' }, { status: 404 });
+            }
+            const data = doc.data();
+            if (data?.creatorEmail !== userEmail && !hasPermission) {
+                return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 });
+            }
+
+            await scrimRef.update({ scrimName: newScrimName });
+
+            const matchesSnapshot = await db.collection('matches').where('scrimId', '==', scrimId).get();
+            if (!matchesSnapshot.empty) {
+                const batch = db.batch();
+                matchesSnapshot.forEach(matchDoc => {
+                    batch.update(matchDoc.ref, { scrimName: newScrimName });
+                });
+                await batch.commit();
+            }
+            updateMessage = '내전 제목이 수정되었습니다.';
         }
 
-        const matchData = doc.data();
-        const teamKey = team === 'blue' ? 'blueTeam' : 'redTeam';
-        const teamData = matchData?.[teamKey] || [];
+        // 2. 챔피언 정보 수정 로직 (matchId가 함께 제공되어야 함)
+        if (team && playerEmail && newChampion && matchId) {
+            const matchRef = db.collection('matches').doc(matchId);
+            const doc = await matchRef.get();
+            if (!doc.exists) {
+                return NextResponse.json({ error: '매치를 찾을 수 없습니다.' }, { status: 404 });
+            }
 
-        const playerIndex = teamData.findIndex((p: { email: string }) => p.email === playerEmail);
-        if (playerIndex === -1) {
-            return NextResponse.json({ error: '해당 플레이어를 찾을 수 없습니다.' }, { status: 404 });
+            const matchData = doc.data();
+            if (matchData?.scrimId !== scrimId) {
+                return NextResponse.json({ error: '해당 내전에 속한 경기가 아닙니다.' }, { status: 400 });
+            }
+
+            const teamKey = team === 'blue' ? 'blueTeam' : 'redTeam';
+            const teamData = matchData?.[teamKey] || [];
+
+            const playerIndex = teamData.findIndex((p: { email: string }) => p.email === playerEmail);
+            if (playerIndex === -1) {
+                return NextResponse.json({ error: '해당 플레이어를 찾을 수 없습니다.' }, { status: 404 });
+            }
+
+            teamData[playerIndex].champion = newChampion;
+            await matchRef.update({ [teamKey]: teamData });
+            updateMessage = '챔피언 정보가 수정되었습니다.';
         }
 
-        teamData[playerIndex].champion = newChampion;
+        if (!newScrimName && !(team && playerEmail && newChampion && matchId)) {
+            return NextResponse.json({ error: '수정할 정보가 없습니다.' }, { status: 400 });
+        }
 
-        await matchRef.update({ [teamKey]: teamData });
+        return NextResponse.json({ message: updateMessage || '정보가 성공적으로 수정되었습니다.' });
 
-        return NextResponse.json({ message: '챔피언 정보가 성공적으로 수정되었습니다.' });
-
-    } catch (error) {
-        console.error('PATCH Match API Error:', error);
-        return NextResponse.json({ error: '챔피언 정보 수정에 실패했습니다.' }, { status: 500 });
+    } catch (error: unknown) {
+        console.error('PATCH Scrim API Error:', error);
+        const errorMessage = error instanceof Error ? error.message : '정보 수정에 실패했습니다.';
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }
 
@@ -225,247 +266,335 @@ export async function PUT(
 
         const scrimRef = db.collection('scrims').doc(scrimId);
 
-            // 참가, 팀 구성 등 나머지 로직은 하나의 트랜잭션으로 처리
-            await db.runTransaction(async (transaction) => {
-                const doc = await transaction.get(scrimRef);
-                if (!doc.exists) throw new Error("내전을 찾을 수 없습니다.");
+        // 참가, 팀 구성 등 나머지 로직은 하나의 트랜잭션으로 처리
+        await db.runTransaction(async (transaction) => {
+            const doc = await transaction.get(scrimRef);
+            if (!doc.exists) throw new Error("내전을 찾을 수 없습니다.");
 
-                const data = doc.data() as ScrimData; // ScrimData 타입으로 명시적으로 캐스팅
-                // body에서 필요한 변수들을 이 안에서 구조분해 할당합니다.
-                const { applicantData, teams, winningTeam, championData, memberEmailToRemove, scrimType } = body;
+            const data = doc.data() as ScrimData; // ScrimData 타입으로 명시적으로 캐스팅
+            // body에서 필요한 변수들을 이 안에서 구조분해 할당합니다.
+            const { applicantData, teams, winningTeam, championData, memberEmailToRemove, scrimType } = body;
 
-                // Firestore에서 받아온 데이터를 타입 가드와 기본값으로 안전하게 초기화
-                let applicants: Applicant[] = (data?.applicants || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
-                let waitlist: Applicant[] = (data?.waitlist || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
-                let blueTeam: Applicant[] = (data?.blueTeam || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
-                let redTeam: Applicant[] = (data?.redTeam || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
+            // Firestore에서 받아온 데이터를 타입 가드와 기본값으로 안전하게 초기화
+            let applicants: Applicant[] = (data?.applicants || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
+            let waitlist: Applicant[] = (data?.waitlist || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
+            let blueTeam: Applicant[] = (data?.blueTeam || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
+            let redTeam: Applicant[] = (data?.redTeam || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
 
-                let hasPermission = true;
-                // 'reset_peerless' 액션도 권한 확인 대상에 포함
-                if (['start_team_building', 'update_teams', 'start_game', 'reset_to_team_building', 'reset_to_recruiting', 'remove_member','end_game', 'reset_peerless'].includes(action)) {
-                    const isAdmin = await checkAdminPermission(userEmail);
-                    if (!isAdmin && data?.creatorEmail !== userEmail) {
-                        hasPermission = false;
-                    }
+            let hasPermission = true;
+            // 'reset_peerless' 액션도 권한 확인 대상에 포함
+            if (['start_team_building', 'update_teams', 'start_game', 'reset_to_team_building', 'reset_to_recruiting', 'remove_member', 'end_game', 'reset_peerless'].includes(action)) {
+                const isAdmin = await checkAdminPermission(userEmail);
+                if (!isAdmin && data?.creatorEmail !== userEmail) {
+                    hasPermission = false;
                 }
-                if (!hasPermission) throw new Error("권한이 없습니다.");
+            }
+            if (!hasPermission) throw new Error("권한이 없습니다.");
 
-                switch (action) {
-                    case 'apply':
-                        if (applicants.length >= 10) throw new Error("참가자 정원이 가득 찼습니다.");
-                        if (applicants.some((a) => a.email === applicantData.email)) throw new Error("이미 신청한 내전입니다.");
-                        transaction.update(scrimRef, { applicants: admin.firestore.FieldValue.arrayUnion(applicantData) });
-                        break;
-                    case 'leave':
-                        let newApplicantsAfterLeave = applicants.filter((a) => a.email !== applicantData.email);
-                        if (newApplicantsAfterLeave.length < 10 && waitlist.length > 0) {
-                            const newMember = waitlist.shift(); // 대기열에서 한 명을 끌어올림
-                            if (newMember) newApplicantsAfterLeave.push(newMember);
+            switch (action) {
+                // ✅ [추가] 테스트 참가자를 추가하는 새로운 케이스
+                case 'add_dummy_applicants': {
+                    const dummyApplicants = [];
+                    const positions = ['TOP', 'JG', 'MID', 'AD', 'SUP'];
+                    const tiers = ['C', 'M', 'D', 'E', 'P', 'G', 'S', 'I'];
+
+                    for (let i = 1; i <= 10; i++) {
+                        const pos1 = positions[Math.floor(Math.random() * positions.length)];
+                        let pos2 = positions[Math.floor(Math.random() * positions.length)];
+                        while (pos1 === pos2) {
+                            pos2 = positions[Math.floor(Math.random() * positions.length)];
                         }
-                        transaction.update(scrimRef, { applicants: newApplicantsAfterLeave, waitlist: waitlist });
-                        break;
-                    case 'apply_waitlist':
-                        if (waitlist.length >= 10) throw new Error("대기자 정원이 가득 찼습니다.");
-                        if (applicants.some((a) => a.email === applicantData.email) || waitlist.some((w) => w.email === applicantData.email)) throw new Error("이미 신청 또는 대기 중인 내전입니다.");
-                        transaction.update(scrimRef, { waitlist: admin.firestore.FieldValue.arrayUnion(applicantData) });
-                        break;
-                    case 'leave_waitlist':
-                        const newWaitlistAfterLeave = waitlist.filter((w) => w.email !== applicantData.email);
-                        transaction.update(scrimRef, { waitlist: newWaitlistAfterLeave });
-                        break;
-                    case 'start_team_building':
-                        if (applicants.length < 10) {
-                            throw new Error("팀 구성을 시작하려면 최소 10명의 참가자가 필요합니다.");
-                        }
-                        // ⭐️ [핵심 로직] 칼바람 모드일 경우 자동 랜덤 분배 ⭐️
-                        if (data.scrimType === '칼바람') {
-                            // 참가자 배열 복사 후 랜덤으로 섞기 (Fisher-Yates Shuffle)
-                            const shuffledApplicants = [...applicants];
-                            for (let i = shuffledApplicants.length - 1; i > 0; i--) {
-                                const j = Math.floor(Math.random() * (i + 1));
-                                [shuffledApplicants[i], shuffledApplicants[j]] = [shuffledApplicants[j], shuffledApplicants[i]];
-                            }
 
-                            const newBlueTeam = shuffledApplicants.slice(0, 5);
-                            const newRedTeam = shuffledApplicants.slice(5, 10);
-
-                            transaction.update(scrimRef, {
-                                status: '팀 구성중', // 제안대로 '팀 구성중' 상태로 변경
-                                blueTeam: newBlueTeam,
-                                redTeam: newRedTeam,
-                                applicants: [], // 참가자 목록은 비우는 것이 맞습니다.
-                            });
-                        } else {
-                            // ✅ [수정] status 변경과 함께 applicants를 blueTeam, redTeam으로 옮기고 비웁니다.
-                            const newBlueTeam = data.applicants.slice(0, 5);
-                            const newRedTeam = data.applicants.slice(5, 10);
-
-                            transaction.update(scrimRef, { 
-                                status: '팀 구성중',
-                                blueTeam: newBlueTeam,
-                                redTeam: newRedTeam,
-                                applicants: [] // 👈 핵심: 참가자 목록을 비워줍니다.
-                            });
-                        }
-                        break;
-
-                    case 'update_teams':
-                        transaction.update(scrimRef, { blueTeam: teams.blueTeam, redTeam: teams.redTeam });
-                        break;
-                    case 'start_game':
-                        transaction.update(scrimRef, {
-                            status: '경기중',
-                            startTime: admin.firestore.FieldValue.serverTimestamp(),
-                            blueTeam: teams.blueTeam,
-                            redTeam: teams.redTeam,
-                            applicants: [],
+                        dummyApplicants.push({
+                            email: `test${i}@test.com`,
+                            nickname: `테스트유저${i}`,
+                            tier: tiers[Math.floor(Math.random() * tiers.length)],
+                            positions: [`${pos1} (1순위)`, `${pos2} (2순위)`],
                         });
-                        break;
-                    case 'reset_to_team_building': {
-                        transaction.update(scrimRef, {
-                            status: '팀 구성중',
-                            winningTeam: admin.firestore.FieldValue.delete(),
-                            startTime: admin.firestore.FieldValue.delete(),
-                        });
-                        break;
                     }
-                    // ✅ [추가] 팀을 초기화하고 모든 선수를 참가자로 보내는 로직
-                    case 'reset_teams_and_move_to_applicants': {
-                        const allPlayersInTeams = [...(data.blueTeam || []), ...(data.redTeam || [])];
-                        const currentApplicants = data.applicants || [];
-                        
-                        const mergedApplicantsMap = new Map();
-                        [...currentApplicants, ...allPlayersInTeams].forEach(p => mergedApplicantsMap.set(p.email, p));
-                        const newApplicants = Array.from(mergedApplicantsMap.values());
-
-                        transaction.update(scrimRef, {
-                            status: '팀 구성중',
-                            applicants: newApplicants,
-                            blueTeam: [],
-                            redTeam: [],
-                            winningTeam: admin.firestore.FieldValue.delete(),
-                            startTime: admin.firestore.FieldValue.delete(),
-                        });
-                        break;
-                    }
-                    case 'reset_to_recruiting':
-                        const allCurrentPlayersForRecruiting = [...applicants, ...blueTeam, ...redTeam];
-                        const uniquePlayersForRecruitingMap = new Map<string, Applicant>();
-                        allCurrentPlayersForRecruiting.forEach(player => uniquePlayersForRecruitingMap.set(player.email, player));
-                        const uniqueApplicantsForRecruiting = Array.from(uniquePlayersForRecruitingMap.values());
-
-                        transaction.update(scrimRef, {
-                            status: '모집중',
-                            applicants: uniqueApplicantsForRecruiting,
-                            blueTeam: [],
-                            redTeam: [],
-                            // waitlist: [],
-                            winningTeam: admin.firestore.FieldValue.delete(),
-                            startTime: admin.firestore.FieldValue.delete(),
-                            // matchChampionHistory는 reset_peerless에서만 변경되도록 유지
-                        });
-                        break;
-                        case 'end_game': {
-                            const { winningTeam, championData, scrimType } = body;
-
-                            // ✅ [추가] 새로운 match 문서를 생성하고 데이터를 저장합니다.
-                            const newMatchDocRef = db.collection('matches').doc();
-                            const matchData = {
-                                scrimId: scrimId,
-                                winningTeam: winningTeam,
-                                matchDate: admin.firestore.FieldValue.serverTimestamp(),
-                                blueTeam: championData.blueTeam,
-                                redTeam: championData.redTeam,
-                            };
-                            // 트랜잭션 외부에서 먼저 생성하거나, 트랜잭션 내에서 set으로 처리할 수 있습니다.
-                            // 여기서는 트랜잭션 밖에서 생성하여 ID를 미리 확보합니다.
-                            await newMatchDocRef.set(matchData);
-
-                            // 🔽 이제 data.scrimType 대신 body에서 받은 scrimType을 사용합니다.
-                            if (scrimType === '피어리스') {
-                                const newMatchRecord = {
-                                    // matchId: db.collection('matches').doc().id,
-                                    matchId: newMatchDocRef.id, // 👈 생성된 match 문서의 ID를 사용
-                                    matchDate: new Date(),
-                                    blueTeamChampions: championData.blueTeam.map((p: Applicant) => ({ playerEmail: p.email, champion: p.champion || '', position: p.assignedPosition || '' })),
-                                    redTeamChampions: championData.redTeam.map((p: Applicant) => ({ playerEmail: p.email, champion: p.champion || '', position: p.assignedPosition || '' })),
-                                };
-                                const championsInThisMatch = [...championData.blueTeam.map((p: Applicant) => p.champion), ...championData.redTeam.map((p: Applicant) => p.champion)].filter(Boolean);
-                                
-                                transaction.update(scrimRef, {
-                                    status: '종료',
-                                    winningTeam: winningTeam,
-                                    
-                                    // 🔽 [추가] 이 두 줄을 추가하여 팀 정보에 챔피언을 기록합니다.
-                                    blueTeam: championData.blueTeam,
-                                    redTeam: championData.redTeam,
-                                    
-                                    // 기존 로직은 유지
-                                    matchChampionHistory: admin.firestore.FieldValue.arrayUnion(newMatchRecord),
-                                    fearlessUsedChampions: admin.firestore.FieldValue.arrayUnion(...championsInThisMatch)
-                                });
-                            }
-                        // --- 칼바람 모드 처리 ---
-                        else if (data.scrimType === '칼바람') {
-                            const newAramMatchRecord = {
-                                // matchId: db.collection('matches').doc().id,
-                                matchId: newMatchDocRef.id, // 👈 생성된 match 문서의 ID를 사용
-
-                                matchDate: new Date(),
-                                blueTeamEmails: championData.blueTeam.map((p: Applicant) => p.email),
-                                redTeamEmails: championData.redTeam.map((p: Applicant) => p.email),
-                            };
-                            transaction.update(scrimRef, {
-                                status: '종료',
-                                winningTeam: winningTeam,
-                                aramMatchHistory: admin.firestore.FieldValue.arrayUnion(newAramMatchRecord)
-                            });
-                        }
-                        // --- 일반 모드 처리 ---
-                        else {
-                            const newMatchRecord = {
-                                // matchId: db.collection('matches').doc().id,
-                                matchId: newMatchDocRef.id, // 👈 생성된 match 문서의 ID를 사용
-                                matchDate: new Date(),
-                                blueTeamChampions: championData.blueTeam.map((p: Applicant) => ({ playerEmail: p.email, champion: p.champion || '미입력', position: p.assignedPosition || '' })),
-                                redTeamChampions: championData.redTeam.map((p: Applicant) => ({ playerEmail: p.email, champion: p.champion || '미입력', position: p.assignedPosition || '' })),
-                            };
-                            transaction.update(scrimRef, {
-                                status: '종료',
-                                winningTeam: winningTeam,
-                                blueTeam: championData.blueTeam,
-                                redTeam: championData.redTeam,
-                                matchChampionHistory: admin.firestore.FieldValue.arrayUnion(newMatchRecord)
-                            });
-                        }
-                        break;
-                    }
-                    
-                    case 'reset_peerless': {
-                        if (data.scrimType !== '피어리스') throw new Error("피어리스 내전이 아닙니다.");
-                        
-                        // [임시 금지 목록]만 초기화합니다.
-                        transaction.update(scrimRef, {
-                            fearlessUsedChampions: [], 
-                        });
-                        break;
-                    }
-                    case 'remove_member':
-                        const filteredApplicants = applicants.filter((a) => a.email !== memberEmailToRemove);
-                        const filteredBlueTeam = blueTeam.filter((p) => p.email !== memberEmailToRemove);
-                        const filteredRedTeam = redTeam.filter((p) => p.email !== memberEmailToRemove);
-                        const filteredWaitlist = waitlist.filter((w) => w.email !== memberEmailToRemove);
-                        transaction.update(scrimRef, {
-                            applicants: filteredApplicants,
-                            blueTeam: filteredBlueTeam,
-                            redTeam: filteredRedTeam,
-                            waitlist: filteredWaitlist
-                        });
-                        break;
-                    default:
-                        throw new Error("알 수 없는 요청입니다.");
+                    // 기존 참가자를 덮어쓰고 10명의 테스트 유저로 설정합니다.
+                    transaction.update(scrimRef, { applicants: dummyApplicants });
+                    break;
                 }
-            });
+                case 'apply':
+                    if (applicants.length >= 10) throw new Error("참가자 정원이 가득 찼습니다.");
+                    if (applicants.some((a) => a.email === applicantData.email)) throw new Error("이미 신청한 내전입니다.");
+                    transaction.update(scrimRef, { applicants: admin.firestore.FieldValue.arrayUnion(applicantData) });
+                    break;
+                case 'leave':
+                    let newApplicantsAfterLeave = applicants.filter((a) => a.email !== applicantData.email);
+                    if (newApplicantsAfterLeave.length < 10 && waitlist.length > 0) {
+                        const newMember = waitlist.shift(); // 대기열에서 한 명을 끌어올림
+                        if (newMember) newApplicantsAfterLeave.push(newMember);
+                    }
+                    transaction.update(scrimRef, { applicants: newApplicantsAfterLeave, waitlist: waitlist });
+                    break;
+                case 'apply_waitlist':
+                    if (waitlist.length >= 10) throw new Error("대기자 정원이 가득 찼습니다.");
+                    if (applicants.some((a) => a.email === applicantData.email) || waitlist.some((w) => w.email === applicantData.email)) throw new Error("이미 신청 또는 대기 중인 내전입니다.");
+                    transaction.update(scrimRef, { waitlist: admin.firestore.FieldValue.arrayUnion(applicantData) });
+                    break;
+                case 'leave_waitlist':
+                    const newWaitlistAfterLeave = waitlist.filter((w) => w.email !== applicantData.email);
+                    transaction.update(scrimRef, { waitlist: newWaitlistAfterLeave });
+                    break;
+                case 'start_team_building':
+                    if (applicants.length < 10) {
+                        throw new Error("팀 구성을 시작하려면 최소 10명의 참가자가 필요합니다.");
+                    }
+                    // ⭐️ [핵심 로직] 칼바람 모드일 경우 자동 랜덤 분배 ⭐️
+                    // if (data.scrimType === '칼바람') {
+                    //     console.log("칼바람됨?")
+                    //     const shuffledApplicants = [...(data.applicants || [])];
+                    //     // Fisher-Yates Shuffle
+                    //     for (let i = shuffledApplicants.length - 1; i > 0; i--) {
+                    //         const j = Math.floor(Math.random() * (i + 1));
+                    //         [shuffledApplicants[i], shuffledApplicants[j]] = [shuffledApplicants[j], shuffledApplicants[i]];
+                    //     }
+                    //     const newBlueTeam = shuffledApplicants.slice(0, 5);
+                    //     const newRedTeam = shuffledApplicants.slice(5, 10);
+
+                    //     transaction.update(scrimRef, {
+                    //         status: '팀 구성중',
+                    //         blueTeam: newBlueTeam,
+                    //         redTeam: newRedTeam,
+                    //         applicants: [], // 참가자 목록을 비웁니다.
+                    //     });
+                    // } else {
+                    //     // ✅ 일반 또는 피어리스 모드는 상태만 변경합니다.
+                    //     // 선수들은 applicants 목록에 그대로 남아있어 수동으로 분배할 수 있습니다.
+                    //     transaction.update(scrimRef, { status: '팀 구성중' });
+                    // }
+                    // break;
+                    transaction.update(scrimRef, { status: '팀 구성중' });
+                    break;
+
+                case 'update_teams':
+                    transaction.update(scrimRef, { blueTeam: teams.blueTeam, redTeam: teams.redTeam });
+                    break;
+                case 'start_game':
+                    transaction.update(scrimRef, {
+                        status: '경기중',
+                        startTime: admin.firestore.FieldValue.serverTimestamp(),
+                        blueTeam: teams.blueTeam,
+                        redTeam: teams.redTeam,
+                        applicants: [],
+                    });
+
+                    break;
+                case 'reset_to_team_building': {
+                    // 1. 현재 팀에 소속된 모든 플레이어를 가져옵니다.
+                    const allPlayersInTeams = [...(data.blueTeam || []), ...(data.redTeam || [])];
+
+                    // 2. 이 플레이어들을 다시 '참가자' 목록으로 합칩니다.
+                    const currentApplicants = data.applicants || [];
+                    const mergedApplicantsMap = new Map();
+                    [...currentApplicants, ...allPlayersInTeams].forEach(p => mergedApplicantsMap.set(p.email, p));
+                    const newApplicants = Array.from(mergedApplicantsMap.values());
+
+                    // 3. status 변경과 함께 팀/참가자 목록을 업데이트합니다.
+                    transaction.update(scrimRef, {
+                        status: '팀 구성중',
+                        applicants: newApplicants,   // 👈 선수들을 참가자 목록으로 이동
+                        blueTeam: [],                // 👈 블루팀 초기화
+                        redTeam: [],                 // 👈 레드팀 초기화
+                        winningTeam: admin.firestore.FieldValue.delete(),
+                        startTime: admin.firestore.FieldValue.delete(),
+                    });
+                    break;
+                }
+                // ✅ [추가] 팀을 초기화하고 모든 선수를 참가자로 보내는 로직
+                case 'reset_teams_and_move_to_applicants': {
+                    const allPlayersInTeams = [...(data.blueTeam || []), ...(data.redTeam || [])];
+                    const currentApplicants = data.applicants || [];
+
+                    // ✅ [수정] 모든 플레이어 목록(기존 참가자 + 팀원)을 합친 후, 한 번에 정리합니다.
+                    const allPlayersToClean = [...currentApplicants, ...allPlayersInTeams];
+
+                    const cleanedPlayerMap = new Map();
+                    allPlayersToClean.forEach(player => {
+                        // 중복된 이메일이 있을 경우 최신 정보로 덮어쓰면서, 필수 필드만 남깁니다.
+                        cleanedPlayerMap.set(player.email, {
+                            email: player.email,
+                            nickname: player.nickname,
+                            positions: player.positions,
+                            tier: player.tier,
+                        });
+                    });
+
+                    const newApplicants = Array.from(cleanedPlayerMap.values());
+
+                    transaction.update(scrimRef, {
+                        status: '팀 구성중',
+                        applicants: newApplicants,
+                        blueTeam: [],
+                        redTeam: [],
+                        winningTeam: admin.firestore.FieldValue.delete(),
+                        startTime: admin.firestore.FieldValue.delete(),
+                    });
+                    break;
+                }
+
+                case 'reset_to_recruiting':
+                    const allCurrentPlayersForRecruiting = [...applicants, ...blueTeam, ...redTeam];
+                    const uniquePlayersForRecruitingMap = new Map<string, Applicant>();
+                    allCurrentPlayersForRecruiting.forEach(player => uniquePlayersForRecruitingMap.set(player.email, player));
+                    const uniqueApplicantsForRecruiting = Array.from(uniquePlayersForRecruitingMap.values());
+
+                    transaction.update(scrimRef, {
+                        status: '모집중',
+                        applicants: uniqueApplicantsForRecruiting,
+                        blueTeam: [],
+                        redTeam: [],
+                        // waitlist: [],
+                        winningTeam: admin.firestore.FieldValue.delete(),
+                        startTime: admin.firestore.FieldValue.delete(),
+                        // matchChampionHistory는 reset_peerless에서만 변경되도록 유지
+                    });
+                    break;
+                case 'end_game': {
+                    const { winningTeam, championData, scrimType } = body;
+
+                    // ✅ [추가] 새로운 match 문서를 생성하고 데이터를 저장합니다.
+                    const newMatchDocRef = db.collection('matches').doc();
+                    const matchData = {
+                        scrimId: scrimId,
+                        winningTeam: winningTeam,
+                        matchDate: admin.firestore.FieldValue.serverTimestamp(),
+                        blueTeam: championData.blueTeam,
+                        redTeam: championData.redTeam,
+                        scrimName: data.scrimName,
+                        scrimType: data.scrimType,
+                        creatorEmail: data.creatorEmail, // 주최자 정보도 함께 저장
+                    };
+                    // 트랜잭션 외부에서 먼저 생성하거나, 트랜잭션 내에서 set으로 처리할 수 있습니다.
+                    // 여기서는 트랜잭션 밖에서 생성하여 ID를 미리 확보합니다.
+                    await newMatchDocRef.set(matchData);
+
+                    // 🔽 이제 data.scrimType 대신 body에서 받은 scrimType을 사용합니다.
+                    if (scrimType === '피어리스') {
+                        const newMatchRecord = {
+                            // matchId: db.collection('matches').doc().id,
+                            matchId: newMatchDocRef.id, // 👈 생성된 match 문서의 ID를 사용
+                            matchDate: new Date(),
+                            blueTeamChampions: championData.blueTeam.map((p: Applicant) => ({ playerEmail: p.email, champion: p.champion || '', position: p.assignedPosition || '' })),
+                            redTeamChampions: championData.redTeam.map((p: Applicant) => ({ playerEmail: p.email, champion: p.champion || '', position: p.assignedPosition || '' })),
+                        };
+                        const championsInThisMatch = [...championData.blueTeam.map((p: Applicant) => p.champion), ...championData.redTeam.map((p: Applicant) => p.champion)].filter(Boolean);
+
+                        transaction.update(scrimRef, {
+                            status: '종료',
+                            winningTeam: winningTeam,
+
+                            // 🔽 [추가] 이 두 줄을 추가하여 팀 정보에 챔피언을 기록합니다.
+                            blueTeam: championData.blueTeam,
+                            redTeam: championData.redTeam,
+
+                            // 기존 로직은 유지
+                            matchChampionHistory: admin.firestore.FieldValue.arrayUnion(newMatchRecord),
+                            fearlessUsedChampions: admin.firestore.FieldValue.arrayUnion(...championsInThisMatch)
+                        });
+                    }
+                    // --- 칼바람 모드 처리 ---
+                    else if (data.scrimType === '칼바람') {
+                        const newAramMatchRecord = {
+                            // matchId: db.collection('matches').doc().id,
+                            matchId: newMatchDocRef.id, // 👈 생성된 match 문서의 ID를 사용
+
+                            matchDate: new Date(),
+                            blueTeamEmails: championData.blueTeam.map((p: Applicant) => p.email),
+                            redTeamEmails: championData.redTeam.map((p: Applicant) => p.email),
+                        };
+                        transaction.update(scrimRef, {
+                            status: '종료',
+                            winningTeam: winningTeam,
+                            aramMatchHistory: admin.firestore.FieldValue.arrayUnion(newAramMatchRecord)
+                        });
+                    }
+                    // --- 일반 모드 처리 ---
+                    else {
+                        const newMatchRecord = {
+                            // matchId: db.collection('matches').doc().id,
+                            matchId: newMatchDocRef.id, // 👈 생성된 match 문서의 ID를 사용
+                            matchDate: new Date(),
+                            blueTeamChampions: championData.blueTeam.map((p: Applicant) => ({ playerEmail: p.email, champion: p.champion || '미입력', position: p.assignedPosition || '' })),
+                            redTeamChampions: championData.redTeam.map((p: Applicant) => ({ playerEmail: p.email, champion: p.champion || '미입력', position: p.assignedPosition || '' })),
+                        };
+                        transaction.update(scrimRef, {
+                            status: '종료',
+                            winningTeam: winningTeam,
+                            blueTeam: championData.blueTeam,
+                            redTeam: championData.redTeam,
+                            matchChampionHistory: admin.firestore.FieldValue.arrayUnion(newMatchRecord)
+                        });
+                    }
+                    break;
+                }
+
+                case 'reset_peerless': {
+                    if (data.scrimType !== '피어리스') throw new Error("피어리스 내전이 아닙니다.");
+
+                    // [임시 금지 목록]만 초기화합니다.
+                    transaction.update(scrimRef, {
+                        fearlessUsedChampions: [],
+                    });
+                    break;
+                }
+                // ✅ [수정] 'remove_member' 케이스 수정
+                case 'remove_member': {
+                    const { memberEmailToRemove } = body;
+
+                    let applicants: Applicant[] = data.applicants || [];
+                    let waitlist: Applicant[] = data.waitlist || [];
+                    let blueTeam: Applicant[] = data.blueTeam || [];
+                    let redTeam: Applicant[] = data.redTeam || [];
+
+                    // 어떤 리스트에서 제거되었는지 확인하기 위한 플래그
+                    let wasRemovedFromMainList = false;
+
+                    const initialApplicantsCount = applicants.length;
+                    applicants = applicants.filter(p => p.email !== memberEmailToRemove);
+                    if (initialApplicantsCount > applicants.length) {
+                        wasRemovedFromMainList = true;
+                    }
+
+                    // '모집중'이 아닐 때 팀 목록에서도 제거 확인
+                    if (data.status !== '모집중') {
+                        const initialBlueTeamCount = blueTeam.length;
+                        blueTeam = blueTeam.filter(p => p.email !== memberEmailToRemove);
+                        if (initialBlueTeamCount > blueTeam.length) {
+                            wasRemovedFromMainList = true;
+                        }
+
+                        const initialRedTeamCount = redTeam.length;
+                        redTeam = redTeam.filter(p => p.email !== memberEmailToRemove);
+                        if (initialRedTeamCount > redTeam.length) {
+                            wasRemovedFromMainList = true;
+                        }
+                    }
+
+                    waitlist = waitlist.filter(p => p.email !== memberEmailToRemove);
+
+                    // '모집중' 상태일 때, 참가자 목록에서 인원이 줄었고 대기자가 있다면 한 명을 올립니다.
+                    if (data.status === '모집중' && wasRemovedFromMainList && waitlist.length > 0) {
+                        const newMember = waitlist.shift(); // 대기열 첫번째 유저를 꺼냄
+                        if (newMember) {
+                            applicants.push(newMember); // 참가자 목록에 추가
+                        }
+                    }
+
+                    transaction.update(scrimRef, {
+                        applicants,
+                        waitlist,
+                        blueTeam,
+                        redTeam
+                    });
+                    break;
+                }
+                default:
+                    throw new Error("알 수 없는 요청입니다.");
+            }
+        });
         // }
 
         return NextResponse.json({ message: '작업이 성공적으로 완료되었습니다.' });

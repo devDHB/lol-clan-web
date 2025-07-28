@@ -16,6 +16,7 @@ let championList: ChampionInfo[] = [];
 let lastFetched: number = 0;
 const CACHE_DURATION = 1000 * 60 * 60; // 1시간 캐시
 
+
 async function getChampionList() {
     if (Date.now() - lastFetched > CACHE_DURATION || championList.length === 0) {
         try {
@@ -53,79 +54,66 @@ async function checkAdminPermission(email: string): Promise<boolean> {
     }
 }
 
+
+
 // --- API 핸들러: GET (매치 상세 정보 조회) ---
 export async function GET(
-  _request: NextRequest,
-  { params }: { params: { matchId: string } }
+    _request: NextRequest,
+    { params }: { params: { matchId: string } }
 ) {
-  try {
-      const { matchId } = await params;
-      if (!matchId) {
-          return NextResponse.json({ error: '매치 ID가 필요합니다.' }, { status: 400 });
-      }
+    try {
+        const { matchId } = await params;
+        if (!matchId) {
+            return NextResponse.json({ error: '매치 ID가 필요합니다.' }, { status: 400 });
+        }
 
-      // 1. 전체 챔피언 목록 (이미지 URL 포함) 가져오기
-      const allChampions = await getChampionList();
-      const championInfoMap = new Map(allChampions.map((c: ChampionInfo) => [c.name, { id: c.id, imageUrl: c.imageUrl }]));
+        const allChampions = await getChampionList();
+        const championImageMap = new Map(allChampions.map((c: ChampionInfo) => [c.name, c.imageUrl]));
 
-      const matchRef = db.collection('matches').doc(matchId);
-      const doc = await matchRef.get();
+        const matchRef = db.collection('matches').doc(matchId);
+        const doc = await matchRef.get();
 
-      if (!doc.exists) {
-          return NextResponse.json({ error: '매치를 찾을 수 없습니다.' }, { status: 404 });
-      }
+        if (!doc.exists) {
+            return NextResponse.json({ error: '매치를 찾을 수 없습니다.' }, { status: 404 });
+        }
 
-      const data = doc.data();
-      
-      // 2. ✅ [핵심] blueTeam과 redTeam 데이터에 이미지 URL을 추가합니다.
-      if (data) {
-          const addImageUrl = (teamData: any[]) => (teamData || []).map(player => ({
-              ...player,
-              championImageUrl: championInfoMap.get(player.champion)?.imageUrl || null
-          }));
+        const data = doc.data();
 
-          data.blueTeam = addImageUrl(data.blueTeam);
-          data.redTeam = addImageUrl(data.redTeam);
-      }
+        if (data) {
+            const addImageUrl = (teamData: any[]) => (teamData || []).map(player => ({
+                ...player,
+                championImageUrl: championImageMap.get(player.champion) || null
+            }));
 
-      // 3. Scrim 정보 가져오기
-      let scrimData = { scrimName: '내전 경기', scrimType: '일반' };
-      if (data?.scrimId) {
-          const scrimRef = db.collection('scrims').doc(data.scrimId);
-          const scrimDoc = await scrimRef.get();
-          if (scrimDoc.exists) {
-              scrimData.scrimName = scrimDoc.data()?.scrimName || scrimData.scrimName;
-              scrimData.scrimType = scrimDoc.data()?.scrimType || scrimData.scrimType;
-          }
-      }
-      
-      // 4. 모든 Timestamp를 문자열로 변환 (직렬화)
-      const serializeData = (obj: any): any => {
-          if (!obj) return obj;
-          if (obj.toDate && typeof obj.toDate === 'function') return obj.toDate().toISOString();
-          if (Array.isArray(obj)) return obj.map(serializeData);
-          if (typeof obj === 'object') {
-              const newObj: { [key: string]: any } = {};
-              for (const key in obj) {
-                  newObj[key] = serializeData(obj[key]);
-              }
-              return newObj;
-          }
-          return obj;
-      };
+            data.blueTeam = addImageUrl(data.blueTeam);
+            data.redTeam = addImageUrl(data.redTeam);
+        }
 
-      const finalData = serializeData({
-          matchId: doc.id,
-          ...data,
-          ...scrimData,
-      });
+        const serializeData = (obj: any): any => {
+            if (!obj) return obj;
+            if (obj.toDate && typeof obj.toDate === 'function') return obj.toDate().toISOString();
+            if (Array.isArray(obj)) return obj.map(serializeData);
+            if (typeof obj === 'object') {
+                const newObj: { [key: string]: any } = {};
+                for (const key in obj) {
+                    newObj[key] = serializeData(obj[key]);
+                }
+                return newObj;
+            }
+            return obj;
+        };
 
-      return NextResponse.json(finalData);
+        const finalData = serializeData({
+            matchId: doc.id,
+            ...data,
+        });
 
-  } catch (error) {
-      console.error('GET Match Detail API Error:', error);
-      return NextResponse.json({ error: '매치 정보를 가져오는 데 실패했습니다.' }, { status: 500 });
-  }
+        return NextResponse.json(finalData);
+
+    } catch (error) {
+        console.error('GET Match Detail API Error:', error);
+        return NextResponse.json({ error: '매치 정보를 가져오는 데 실패했습니다.' }, { status: 500 });
+    }
 }
 
 // --- API 핸들러: PATCH (매치 정보 수정) ---
