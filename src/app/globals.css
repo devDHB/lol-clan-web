@@ -1,26 +1,51 @@
+/* src/app/globals.css */
+
+/* ✅ [추가] 1순위 한글 폰트 Pretendard를 불러옵니다. */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+/* 2순위 한글 폰트 Noto Sans KR을 불러옵니다. */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+
+/* Tailwind CSS v4의 공식 import 구문을 사용합니다. */
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Riot Games의 커스텀 폰트 파일을 선언합니다. */
+@font-face {
+  font-family: 'Beaufort for LOL';
+  src: url('/fonts/BeaufortForLoL-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@font-face {
+  font-family: 'Beaufort for LOL';
+  src: url('/fonts/BeaufortForLoL-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@font-face {
+  font-family: 'Spiegel';
+  src: url('/fonts/Spiegel-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@font-face {
+  font-family: 'Spiegel';
+  src: url('/fonts/Spiegel-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+/* 제목 태그에 폰트 적용 순서를 지정합니다. */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  /* ✅ [수정] Pretendard를 Noto Sans KR보다 앞에 추가합니다. */
+  font-family: "Beaufort for LOL", "Pretendard", "Noto Sans KR", serif;
+  font-weight: bold;
 }

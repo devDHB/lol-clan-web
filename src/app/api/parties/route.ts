@@ -17,6 +17,7 @@ interface PartyData {
   waitingData: Member[];
   requiredTier?: string;
   startTime?: string | null;
+  playStyle?: '즐겜' | '빡겜';
 }
 
 const safeParse = (data: unknown): Member[] => {
@@ -45,7 +46,6 @@ export async function GET() {
     snapshot.forEach(doc => {
       const data = doc.data();
       const createdAt = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
-      // startTime 필드 추가: Timestamp일 경우 변환, 문자열일 경우 그대로 사용
       let startTime = null;
       if (data.startTime) {
         if (data.startTime.toDate) { // Firestore Timestamp인 경우
@@ -59,7 +59,7 @@ export async function GET() {
         partyId: doc.id,
         ...data,
         createdAt,
-        startTime, // startTime 반환
+        startTime,
       });
     });
 
@@ -72,42 +72,40 @@ export async function GET() {
 }
 
 // POST: 새로운 파티를 만드는 함수
-export async function POST(request: NextRequest) { // Request 대신 NextRequest 사용 권장
+export async function POST(request: NextRequest) {
   try {
-    // requiredTier와 startTime을 request.json()에서 받도록 추가
-    const { partyName, creatorEmail, partyType, requiredTier, startTime } = await request.json();
+    const { partyName, creatorEmail, partyType, requiredTier, startTime, playStyle } = await request.json();
 
-    // 유효성 검사 업데이트
     if (!partyName || !creatorEmail || !partyType) {
       return NextResponse.json({ error: '파티 이름, 생성자 이메일, 파티 타입은 필수입니다.' }, { status: 400 });
     }
-
-    // 듀오랭크/자유랭크에만 티어 필수, 기타는 선택
-    if ((partyType === '자유랭크' || partyType === '듀오랭크') && (!requiredTier || requiredTier.trim() === '')) {
-      return NextResponse.json({ error: '자유랭크 또는 듀오랭크는 필수 티어가 필요합니다.' }, { status: 400 });
+    if ((partyType === '자유랭크' || partyType === '솔로/듀오랭크') && (!requiredTier || requiredTier.trim() === '')) {
+      return NextResponse.json({ error: '랭크 파티는 필수 티어가 필요합니다.' }, { status: 400 });
     }
 
     let maxMembers;
+    // ✅ [수정] '듀오랭크'를 '솔로/듀오랭크'로 변경
     switch (partyType) {
       case '자유랭크': maxMembers = 5; break;
-      case '듀오랭크': maxMembers = 2; break;
+      case '솔로/듀오랭크': maxMembers = 2; break;
       case '기타': maxMembers = 10; break;
       default: return NextResponse.json({ error: '알 수 없는 파티 타입입니다.' }, { status: 400 });
     }
 
-    const newParty: PartyData = { // PartyData 인터페이스 사용
+    const newParty: any = {
       partyType,
       partyName,
       maxMembers,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      membersData: [{ email: creatorEmail, positions: ['ALL'] }], // 파티장은 ALL로 시작
+      membersData: [{ email: creatorEmail, positions: ['ALL'] }],
       waitingData: [],
-      // --- 새로 추가된 필드 ---
-      requiredTier: (partyType === '자유랭크' || partyType === '듀오랭크') ? (requiredTier || undefined) : undefined, // 특정 타입에만 저장
-      // startTime이 제공되면 문자열 그대로 저장, 아니면 null (즉시 시작)
       startTime: (startTime && startTime.trim() !== '') ? startTime.trim() : null,
-      // --- 추가 필드 끝 ---
     };
+
+    if (partyType === '자유랭크' || partyType === '솔로/듀오랭크') {
+      newParty.requiredTier = requiredTier || '';
+      newParty.playStyle = playStyle || '즐겜';
+    }
 
     const docRef = await db.collection('parties').add(newParty);
 
@@ -118,6 +116,7 @@ export async function POST(request: NextRequest) { // Request 대신 NextRequest
     return NextResponse.json({ error: '파티 생성에 실패했습니다.' }, { status: 500 });
   }
 }
+
 
 // PUT: 파티 참가/나가기/대기열을 처리하는 함수
 export async function PUT(request: NextRequest) { // Request 대신 NextRequest 사용 권장
@@ -189,7 +188,6 @@ export async function PATCH(request: NextRequest) {
     const partyData = doc.data();
     const members: Member[] = safeParse(partyData?.membersData);
 
-    // --- 수정된 권한 확인 로직 ---
     const userSnapshot = await db.collection('users').where('email', '==', userEmail).limit(1).get();
     if (userSnapshot.empty) {
       return NextResponse.json({ error: '사용자 정보를 찾을 수 없습니다.' }, { status: 403 });
@@ -199,7 +197,6 @@ export async function PATCH(request: NextRequest) {
     const isLeader = members.length > 0 && members[0].email === userEmail;
 
     const hasEditPermission = userRole === '총관리자' || isLeader || isMember;
-    // --- 로직 수정 끝 ---
 
     if (action === 'update_positions') {
       if (!isMember) {
@@ -216,11 +213,13 @@ export async function PATCH(request: NextRequest) {
       if (!hasEditPermission) {
         return NextResponse.json({ error: '파티 정보를 수정할 권한이 없습니다.' }, { status: 403 });
       }
-      const { newPartyName, newRequiredTier, newStartTime } = body;
+      // ✅ [수정] newPlayStyle 추가
+      const { newPartyName, newRequiredTier, newStartTime, newPlayStyle } = body;
       const updates: { [key: string]: any } = {};
       if (newPartyName !== undefined) updates.partyName = newPartyName;
       if (newRequiredTier !== undefined) updates.requiredTier = newRequiredTier;
       if (newStartTime !== undefined) updates.startTime = (newStartTime && newStartTime.trim() !== '') ? newStartTime.trim() : null;
+      if (newPlayStyle !== undefined) updates.playStyle = newPlayStyle; // ✅ playStyle 업데이트
 
       if ((partyData?.partyType === '자유랭크' || partyData?.partyType === '듀오랭크') && (!newRequiredTier || newRequiredTier.trim() === '')) {
         return NextResponse.json({ error: `${partyData?.partyType} 파티는 필수 티어가 필요합니다.` }, { status: 400 });
@@ -235,7 +234,6 @@ export async function PATCH(request: NextRequest) {
     } else {
       return NextResponse.json({ error: '알 수 없는 요청입니다.' }, { status: 400 });
     }
-    return NextResponse.json({ error: '처리되지 않은 요청입니다.' }, { status: 400 });
   } catch (error) {
     console.error('PATCH Party API Error:', error);
     return NextResponse.json({ error: '업데이트에 실패했습니다.' }, { status: 500 });

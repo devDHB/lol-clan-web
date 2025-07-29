@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 
-// 타입 정의
+// --- 타입 정의 (수정) ---
 interface Notice {
   noticeId: string;
   title: string;
@@ -14,15 +14,20 @@ interface Notice {
   imageUrls?: string[];
   createdAt: string;
 }
+interface Member {
+  email: string;
+  positions: string[];
+}
 interface Party {
   partyId: string;
   partyName: string;
   partyType: string;
-  membersData: string | Member[];
-  maxMembers: string;
+  membersData: Member[];
+  maxMembers: number;
   createdAt: string;
   requiredTier?: string;
   startTime?: string | null;
+  playStyle?: '즐겜' | '빡겜';
 }
 interface Scrim {
   scrimId: string;
@@ -31,33 +36,36 @@ interface Scrim {
   status: string;
   applicants: Member[];
   startTime: string;
-}
-interface Member {
-  email: string;
-  positions: string[];
+  scrimType: string;
 }
 interface UserMap {
   [email: string]: string;
 }
 
-// 헬퍼 함수
-const safeParseClient = (data: unknown): Member[] => {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (typeof data === 'string') {
-    try {
-      const parsed = JSON.parse(data);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) { return []; }
-  }
-  return [];
+// --- 헬퍼 함수 및 스타일 ---
+const partyTypeStyles: { [key: string]: { bg: string; text: string; border: string; } } = {
+  '자유랭크': { bg: 'bg-blue-500/20', text: 'text-blue-300', border: 'border-blue-500/30' },
+  '솔로/듀오랭크': { bg: 'bg-purple-500/20', text: 'text-purple-300', border: 'border-purple-500/30' },
+  '기타': { bg: 'bg-teal-500/20', text: 'text-teal-300', border: 'border-teal-500/30' },
 };
 
-const partyTypeColors: { [key: string]: string } = {
-  '자유랭크': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  '듀오랭크': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  '기타': 'bg-teal-500/20 text-teal-300 border-teal-500/30',
+const scrimTypeStyles: { [key: string]: string } = {
+  '일반': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  '피어리스': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  '칼바람': 'bg-teal-500/20 text-teal-300 border-teal-500/30',
 };
+
+const playStyleStyles: { [key: string]: { bg: string; text: string; border: string; } } = {
+  '즐겜': { bg: 'bg-green-500/20', text: 'text-green-300', border: 'border-green-500/30' },
+  '빡겜': { bg: 'bg-red-500/20', text: 'text-red-300', border: 'border-red-500/30' },
+};
+
+const requiredTierStyles = {
+  bg: 'bg-orange-500/20',
+  text: 'text-orange-300',
+  border: 'border-orange-500/30',
+};
+
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -79,18 +87,10 @@ export default function HomePage() {
             fetch('/api/users', { cache: 'no-store' }).catch(() => null),
           ]);
 
-          if (noticesRes && noticesRes.ok) {
-            const noticesData = await noticesRes.json();
-            setNotices(noticesData.slice(0, 2));
-          }
-          if (partiesRes && partiesRes.ok) {
-            const partiesData = await partiesRes.json();
-            setParties(partiesData.slice(0, 10));
-          }
-          if (scrimsRes && scrimsRes.ok) {
-            const scrimsData = await scrimsRes.json();
-            setScrims(scrimsData.slice(0, 10));
-          }
+          if (noticesRes && noticesRes.ok) setNotices((await noticesRes.json()).slice(0, 2));
+          if (partiesRes && partiesRes.ok) setParties((await partiesRes.json()).slice(0, 10));
+          if (scrimsRes && scrimsRes.ok) setScrims((await scrimsRes.json()).slice(0, 10));
+
           if (usersRes && usersRes.ok) {
             const usersData: { email: string; nickname: string }[] = await usersRes.json();
             const map: UserMap = {};
@@ -167,26 +167,27 @@ export default function HomePage() {
             <h2 className="text-2xl font-bold mb-4 border-b border-gray-700 pb-2">🔥 파티 현황</h2>
             <ul className="space-y-3">
               {parties.length > 0 ? parties.map(party => {
-                const members = safeParseClient(party.membersData);
+                const members = party.membersData as Member[];
                 const leaderEmail = members.length > 0 ? members[0].email : '';
                 const leaderNickname = userMap[leaderEmail] || leaderEmail.split('@')[0];
-                const typeStyle = partyTypeColors[party.partyType] || 'bg-gray-600';
+                const typeStyle = partyTypeStyles[party.partyType] || {};
                 return (
                   <li key={party.partyId} className="p-3 bg-gray-700/50 rounded-md hover:bg-gray-700 transition-colors">
                     <Link href="/parties" className="block space-y-2">
                       <div className="flex justify-between items-start">
                         <h4 className="font-bold text-lg text-white truncate pr-2">{party.partyName}</h4>
-                        <span className={`flex-shrink-0 px-2 py-0.5 text-sm font-semibold rounded-full border ${typeStyle}`}>
-                          {party.partyType}
-                        </span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {party.requiredTier && <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${requiredTierStyles.bg} ${requiredTierStyles.text} ${requiredTierStyles.border}`}>{party.requiredTier}</span>}
+                          {party.playStyle && <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${playStyleStyles[party.playStyle].bg} ${playStyleStyles[party.playStyle].text} ${playStyleStyles[party.playStyle].border}`}>{party.playStyle}</span>}
+                          <span className={`px-2 py-0.5 text-sm font-semibold rounded-full border ${typeStyle.bg} ${typeStyle.text} ${typeStyle.border}`}>
+                            {party.partyType}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex justify-between items-center text-sm text-gray-400">
-                        <span>👑 {leaderNickname}</span>
+                        <span>� {leaderNickname}</span>
                         <span>{`${members.length}/${party.maxMembers}`} | ⏰ {party.startTime || '즉시 시작'}</span>
                       </div>
-                      {(party.partyType === '자유랭크' || party.partyType === '듀오랭크') && party.requiredTier && (
-                        <div className="text-sm text-orange-400">티어: {party.requiredTier}</div>
-                      )}
                     </Link>
                   </li>
                 )
@@ -200,15 +201,21 @@ export default function HomePage() {
             <ul className="space-y-3">
               {scrims.length > 0 ? scrims.map(scrim => {
                 const creatorNickname = userMap[scrim.creatorEmail] || scrim.creatorEmail.split('@')[0];
-                const applicants = safeParseClient(scrim.applicants);
+                const applicants = scrim.applicants as Member[];
+                const scrimStyle = scrimTypeStyles[scrim.scrimType] || 'bg-gray-600';
                 return (
                   <li key={scrim.scrimId} className="p-3 bg-gray-700/50 rounded-md hover:bg-gray-700 transition-colors">
                     <Link href={`/scrims/${scrim.scrimId}`} className="block space-y-2">
                       <div className="flex justify-between items-start">
                         <h4 className="font-bold text-lg text-white truncate pr-2">{scrim.scrimName || '이름 없는 내전'}</h4>
-                        <span className="flex-shrink-0 px-2 py-0.5 text-sm font-semibold rounded-full bg-green-500/20 text-green-300 border border-green-500/30">
-                          {scrim.status}
-                        </span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className={`px-2 py-0.5 text-sm font-semibold rounded-full border ${scrimStyle}`}>
+                            {scrim.scrimType}
+                          </span>
+                          <span className="px-2 py-0.5 text-sm font-semibold rounded-full bg-green-500/20 text-green-300 border border-green-500/30">
+                            {scrim.status}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex justify-between items-center text-sm text-gray-400">
                         <span>👑 주최자: {creatorNickname}</span>

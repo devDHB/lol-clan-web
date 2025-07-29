@@ -3,15 +3,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image'; // Next.js Image 컴포넌트 사용
+import Image from 'next/image';
 
-// --- 타입 정의 (단순화) ---
+// --- 타입 정의 ---
 interface MatchPlayer {
     nickname: string;
     tier: string;
     champion: string;
-    email: string;
-    championImageUrl?: string; // API에서 이 데이터를 직접 받습니다.
+    email: string; // 링크를 위해 email 필드가 필수입니다.
+    championImageUrl?: string;
 }
 
 interface MatchData {
@@ -23,7 +23,7 @@ interface MatchData {
     redTeam: MatchPlayer[];
 }
 
-// --- 내전 타입별 색상 정의 (기존과 동일) ---
+// --- 내전 타입별 색상 정의 ---
 const scrimTypeColors: { [key: string]: string } = {
     '일반': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
     '피어리스': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
@@ -37,7 +37,6 @@ export default function MatchDetailPage() {
     const [match, setMatch] = useState<MatchData | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // fetchData를 단순화합니다.
     const fetchData = useCallback(async () => {
         if (!matchId) return;
         setLoading(true);
@@ -88,7 +87,7 @@ export default function MatchDetailPage() {
                 </div>
                 <p className="text-lg text-gray-400 mt-1">{new Date(match.matchDate).toLocaleString('ko-KR')}</p>
             </header>
-            
+
             <h2 className="text-3xl font-bold text-center mb-6">
                 경기 결과:
                 <span className={match.winningTeam === 'blue' ? 'text-blue-400' : 'text-red-500'}>
@@ -103,20 +102,14 @@ export default function MatchDetailPage() {
                     <div className="space-y-3">
                         {match.blueTeam.map(player => (
                             <div key={player.email} className="flex items-center gap-4 bg-gray-700/50 p-3 rounded-md">
-                                {/* ✅ [수정] 챔피언 이미지 표시 */}
                                 {player.championImageUrl ? (
-                                    <Image
-                                        src={player.championImageUrl}
-                                        alt={player.champion || '챔피언'}
-                                        width={48}
-                                        height={48}
-                                        className="rounded-md"
-                                    />
+                                    <Image src={player.championImageUrl} alt={player.champion || '챔피언'} width={48} height={48} className="rounded-md" />
                                 ) : (
                                     <div className="w-12 h-12 bg-gray-600 rounded-md flex items-center justify-center text-xs">?</div>
                                 )}
                                 <div className="flex-grow">
-                                    <p className="font-bold text-lg">{player.nickname}</p>
+                                    {/* ✅ [수정] 닉네임에 개인 전적 페이지 링크 추가 */}
+                                    <Link href={`/profile/${player.email}`} className="font-bold text-lg hover:text-yellow-400 transition-colors">{player.nickname}</Link>
                                     <p className="text-sm text-gray-400">{player.tier}</p>
                                 </div>
                                 <span className="font-semibold text-yellow-400">{player.champion}</span>
@@ -131,20 +124,14 @@ export default function MatchDetailPage() {
                     <div className="space-y-3">
                         {match.redTeam.map(player => (
                             <div key={player.email} className="flex items-center gap-4 bg-gray-700/50 p-3 rounded-md">
-                                {/* ✅ [수정] 챔피언 이미지 표시 */}
                                 {player.championImageUrl ? (
-                                    <Image
-                                        src={player.championImageUrl}
-                                        alt={player.champion || '챔피언'}
-                                        width={48}
-                                        height={48}
-                                        className="rounded-md"
-                                    />
+                                    <Image src={player.championImageUrl} alt={player.champion || '챔피언'} width={48} height={48} className="rounded-md" />
                                 ) : (
                                     <div className="w-12 h-12 bg-gray-600 rounded-md flex items-center justify-center text-xs">?</div>
                                 )}
                                 <div className="flex-grow">
-                                    <p className="font-bold text-lg">{player.nickname}</p>
+                                    {/* ✅ [수정] 닉네임에 개인 전적 페이지 링크 추가 */}
+                                    <Link href={`/profile/${player.email}`} className="font-bold text-lg hover:text-yellow-400 transition-colors">{player.nickname}</Link>
                                     <p className="text-sm text-gray-400">{player.tier}</p>
                                 </div>
                                 <span className="font-semibold text-yellow-400">{player.champion}</span>

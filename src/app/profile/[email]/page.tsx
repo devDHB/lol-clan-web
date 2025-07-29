@@ -22,7 +22,6 @@ interface MatchupStats {
         };
     };
 }
-// ✅ [수정] UserStats 타입에 recentGames 추가
 interface UserStats {
     totalGames: number;
     totalWins: number;
@@ -43,7 +42,7 @@ interface UserStats {
 interface ChampionInfo {
     id: string;
     name: string;
-    imageUrl: string; // 이미지 URL 포함
+    imageUrl: string;
 }
 interface UserInfo {
     email: string;
@@ -144,7 +143,6 @@ export default function ProfilePage() {
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* 왼쪽 컬럼: 종합, 칼바람, 포지션 전적 */}
                 <div className="lg:col-span-2 space-y-8">
                     <section className="bg-gray-800 p-6 rounded-lg">
                         <h2 className="text-2xl font-bold mb-4 border-l-4 border-blue-400 pl-4">종합 전적 (일반/피어리스)</h2>
@@ -189,9 +187,9 @@ export default function ProfilePage() {
                     </section>
                 </div>
 
-                {/* ✅ [추가] 오른쪽 컬럼: 최근 10경기 */}
                 <div className="lg:col-span-1 space-y-8">
                     <section className="bg-gray-800 p-6 rounded-lg">
+                        {/* ✅ [수정] "최근 5경기"를 "최근 10경기"로 변경 */}
                         <h2 className="text-2xl font-bold mb-4 border-l-4 border-purple-400 pl-4">최근 10경기</h2>
                         <div className="flex flex-col gap-3">
                             {stats.recentGames.length > 0 ? (
@@ -259,7 +257,9 @@ export default function ProfilePage() {
                                         <tbody>
                                             {Object.entries(opponents).sort(([, a], [, b]) => (b.wins + b.losses) - (a.wins + a.losses)).map(([email, data]) => (
                                                 <tr key={email} className="border-b border-gray-700/50">
-                                                    <td className="p-2">{data.nickname}</td>
+                                                    <td className="p-2">
+                                                        <Link href={`/profile/${email}`} className="hover:text-yellow-400 transition-colors">{data.nickname}</Link>
+                                                    </td>
                                                     <td className="p-2 text-center text-green-400">{data.wins}</td>
                                                     <td className="p-2 text-center text-red-400">{data.losses}</td>
                                                     <td className="p-2 text-center">{calculateWinRate(data.wins, data.losses)}</td>

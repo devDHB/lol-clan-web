@@ -11,7 +11,9 @@ interface UserStats {
     totalWins: number;
     aramGames: number;
     aramWins: number;
-    positions: { [key: string]: { games: number; wins: number; } };
+    positions: {
+        [key: string]: { games: number; wins: number; }
+    };
 }
 
 interface RankedPlayer {
@@ -127,7 +129,7 @@ export default function StatsPage() {
                     aValue = a.positions[key]?.games || 0;
                     bValue = b.positions[key]?.games || 0;
                 }
-                
+
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
@@ -156,7 +158,7 @@ export default function StatsPage() {
     return (
         <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
             <HallOfFameSection hallOfFame={hallOfFame} />
-            
+
             <h1 className="text-4xl font-bold text-blue-400 mb-8">전적 통계</h1>
             <div className="overflow-x-auto bg-gray-800 rounded-lg shadow-lg">
                 <table className="w-full text-left whitespace-nowrap">

@@ -21,6 +21,15 @@ interface UserProfile {
   role: string;
 }
 
+// ✅ [수정] 본문에서 이미지 링크를 제거하고 줄바꿈을 유지하는 헬퍼 함수
+const stripImageMarkdown = (content: string) => {
+  // 이미지 마크다운을 제거하고, 연속된 빈 줄을 하나로 정리합니다.
+  return content
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\n\s*\n/g, '\n')
+    .trim();
+};
+
 export default function NoticesPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -51,7 +60,6 @@ export default function NoticesPage() {
 
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const handleDelete = async (noticeId: string) => {
@@ -116,7 +124,8 @@ export default function NoticesPage() {
                 <div className="p-6 flex flex-col flex-grow">
                   <Link href={`/notices/${notice.noticeId}`} className="block flex-grow">
                     <h2 className="text-2xl font-semibold text-white group-hover/item:text-yellow-400 transition-colors">{notice.title}</h2>
-                    <p className="text-sm text-gray-400 mt-2 line-clamp-4">{notice.content}</p>
+                    {/* ✅ [수정] whitespace-pre-wrap 클래스 추가하여 줄바꿈 유지 */}
+                    <p className="text-sm text-gray-400 mt-2 line-clamp-4 whitespace-pre-wrap">{stripImageMarkdown(notice.content)}</p>
                   </Link>
                   <div className="flex justify-between items-center mt-auto text-xs text-gray-500 pt-4 border-t border-gray-700">
                     <span>{notice.authorNickname}</span>

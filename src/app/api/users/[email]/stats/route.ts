@@ -68,7 +68,6 @@ export async function GET(
     { params }: { params: { email: string } }
 ) {
     try {
-        // ✅ [수정] params를 사용하기 전에 await로 처리합니다.
         const resolvedParams = await params;
         const userEmail = decodeURIComponent(resolvedParams.email);
 
@@ -157,7 +156,7 @@ export async function GET(
             }
         });
 
-        // 6. 최근 10경기 정보 추출
+        // ✅ [수정] 최근 10경기 정보 추출
         stats.recentGames = userNonAramMatches.slice(0, 10).map(match => {
             const championName = match.playerInfo.champion;
             const champInfo = championInfoMap.get(championName);

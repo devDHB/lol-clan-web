@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
+import Image from 'next/image';
 
-// 타입 정의
+// --- 타입 정의 ---
 interface NoticeDetail {
   noticeId: string;
   title: string;
@@ -18,6 +19,38 @@ interface NoticeDetail {
 interface UserProfile {
   role: string;
 }
+
+// 본문 내용 중 이미지 링크를 실제 이미지로 변환해주는 컴포넌트
+const ContentRenderer = ({ content }: { content: string }) => {
+  // 정규식을 사용하여 Markdown 이미지 구문( ![alt](src) )을 찾습니다.
+  const parts = content.split(/(!\[.*?\]\(.*?\))/g);
+
+  return (
+    // ✅ [수정] text-lg 클래스를 추가하여 기본 폰트 크기를 키웁니다.
+    <div className="prose prose-invert max-w-none whitespace-pre-wrap text-lg">
+      {parts.map((part, index) => {
+        const match = part.match(/!\[.*?\]\((.*?)\)/);
+        if (match) {
+          // 이미지 구문을 만나면, Next.js의 Image 컴포넌트로 변환합니다.
+          return (
+            <div key={index} className="relative my-4 aspect-video">
+              <Image
+                src={match[1]}
+                alt="공지사항 이미지"
+                layout="fill"
+                objectFit="contain"
+                className="rounded-lg"
+              />
+            </div>
+          );
+        }
+        // 일반 텍스트는 그대로 표시합니다.
+        return part;
+      })}
+    </div>
+  );
+};
+
 
 export default function NoticeDetailPage() {
   const { user } = useAuth();
@@ -108,7 +141,7 @@ export default function NoticeDetailPage() {
 
   return (
     <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="mb-4 flex justify-between items-center">
           <Link href="/notices" className="text-blue-400 hover:underline">← 목록으로 돌아가기</Link>
           {canModify && (
@@ -129,25 +162,8 @@ export default function NoticeDetailPage() {
               </div>
             </header>
 
-            <div className="prose prose-invert max-w-none whitespace-pre-wrap mb-8">
-              {notice.content}
-            </div>
+            <ContentRenderer content={notice.content} />
 
-            {notice.imageUrls && Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-gray-700">
-                <div className="flex flex-col gap-6 items-start">
-                  {notice.imageUrls.map((url: string, index: number) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={index}
-                      src={url}
-                      alt={`${notice.title} ${index + 1}`}
-                      className="max-w-full h-auto rounded-lg"
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </article>
       </div>

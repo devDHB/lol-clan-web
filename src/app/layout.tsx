@@ -1,21 +1,11 @@
 // src/app/layout.tsx
 
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { AuthProvider } from "@/components/AuthProvider"; // 1. AuthProvider 불러오기
-import Header from "@/components/Header"; // 1. Header 불러오기
+import { AuthProvider } from "@/components/AuthProvider";
+import Header from "@/components/Header";
 
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// 1. 기존 Geist 폰트 import 및 설정 코드 삭제
 
 export const metadata: Metadata = {
   title: "리그오브레전드 - 바나나단",
@@ -28,13 +18,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {/* 2. AuthProvider로 children 감싸기 */}
+    <html lang="ko">
+      {/* 2. className을 font-spiegel로 변경하고, 나머지 필요한 클래스 추가 */}
+      <body className="font-spiegel bg-gray-900 text-white antialiased">
         <AuthProvider>
-          <Header /> {/* 2. Header를 여기에 추가 */}
+          <Header />
           {children}
         </AuthProvider>
       </body>
