@@ -47,32 +47,32 @@ export async function GET() {
             if (!match.winningTeam) return;
 
             const processTeam = (team: MatchPlayer[], isWinner: boolean) => {
-                (team || []).forEach((player) => {
-                    if (!player.email || !usersMap.has(player.email)) return;
+                (team || []).forEach((player) => {
+                    if (!player.email || !usersMap.has(player.email)) return;
 
-                    let userStats = statsMap.get(player.email) || {
-                        email: player.email,
-                        nickname: usersMap.get(player.email)!.nickname,
-                        totalGames: 0, totalWins: 0, aramGames: 0, aramWins: 0,
-                        positions: {}, championStats: {},
-                    };
+                    const userStats = statsMap.get(player.email) || {
+                        email: player.email,
+                        nickname: usersMap.get(player.email)!.nickname,
+                        totalGames: 0, totalWins: 0, aramGames: 0, aramWins: 0,
+                        positions: {}, championStats: {},
+                    };
 
-                    if (match.scrimType === '칼바람') {
-                        userStats.aramGames++;
-                        if (isWinner) userStats.aramWins++;
-                    } else {
-                        userStats.totalGames++;
-                        if (isWinner) userStats.totalWins++;
-                        const position = player.assignedPosition;
-                        if (position) {
-                            if (!userStats.positions[position]) userStats.positions[position] = { games: 0, wins: 0 };
-                            userStats.positions[position].games++;
-                            if (isWinner) userStats.positions[position].wins++;
-                        }
-                    }
-                    statsMap.set(player.email, userStats);
-                });
-            };
+                    if (match.scrimType === '칼바람') {
+                        userStats.aramGames++;
+                        if (isWinner) userStats.aramWins++;
+                    } else {
+                        userStats.totalGames++;
+                        if (isWinner) userStats.totalWins++;
+                        const position = player.assignedPosition;
+                        if (position) {
+                            if (!userStats.positions[position]) userStats.positions[position] = { games: 0, wins: 0 };
+                            userStats.positions[position].games++;
+                            if (isWinner) userStats.positions[position].wins++;
+                        }
+                    }
+                    statsMap.set(player.email, userStats);
+                });
+            };
             processTeam(match.blueTeam, match.winningTeam === 'blue');
             processTeam(match.redTeam, match.winningTeam === 'red');
         });

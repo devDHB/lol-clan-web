@@ -11,6 +11,14 @@ interface MatchPlayer {
     assignedPosition?: string;
 }
 
+interface MatchData {
+    blueTeam: MatchPlayer[];
+    redTeam: MatchPlayer[];
+    scrimType: string;
+    winningTeam: 'blue' | 'red';
+    matchDate: string;
+}
+
 interface UserStats {
     totalGames: number;
     totalWins: number;
@@ -33,6 +41,13 @@ interface ChampionInfo {
     id: string;
     name: string;
     imageUrl: string;
+}
+
+interface UserMatchRecord extends MatchData {
+    matchId: string;
+    playerInfo: MatchPlayer;
+    didWin: boolean;
+    opponentTeam: MatchPlayer[];
 }
 
 // --- 공통 함수: Riot API 챔피언 목록 가져오기 (캐싱 포함) ---
@@ -95,10 +110,10 @@ export async function GET(
             recentGames: [],
         };
 
-        const userNonAramMatches: any[] = [];
+        const userNonAramMatches: UserMatchRecord[] = [];
 
         matchesSnapshot.forEach(doc => {
-            const match = doc.data();
+            const match = doc.data() as MatchData;
             const blueTeam: MatchPlayer[] = match.blueTeam || [];
             const redTeam: MatchPlayer[] = match.redTeam || [];
 
@@ -115,7 +130,15 @@ export async function GET(
                 if (didWin) stats.aramWins++;
             } else {
                 const opponentTeam = playerInBlue ? redTeam : blueTeam;
-                userNonAramMatches.push({ ...match, matchId: doc.id, playerInfo, didWin, opponentTeam });
+                if (playerInfo) {
+                    userNonAramMatches.push({
+                        ...match,
+                        matchId: doc.id,
+                        playerInfo,
+                        didWin,
+                        opponentTeam
+                    });
+                }
             }
         });
 
@@ -131,14 +154,10 @@ export async function GET(
 
             const position = match.playerInfo.assignedPosition;
             if (position && stats.positions[position as keyof typeof stats.positions]) {
-                if (match.didWin) stats.positions[position as keyof typeof stats.positions].wins++;
-                else stats.positions[position as keyof typeof stats.positions].losses++;
-
-                const opponentInfo = match.opponentTeam.find((p: any) => p.assignedPosition === position);
+                const opponentInfo: MatchPlayer | undefined = match.opponentTeam.find(p => p.assignedPosition === position);
 
                 if (opponentInfo) {
                     const opponentEmail = opponentInfo.email;
-                    // usersMap 대신 경기 기록에 저장된 닉네임을 직접 사용
                     const opponentNickname = opponentInfo.nickname || '알 수 없음';
 
                     if (!stats.matchups[position]) stats.matchups[position] = {};
@@ -153,9 +172,13 @@ export async function GET(
 
         stats.recentGames = userNonAramMatches.slice(0, 10).map(match => {
             const championName = match.playerInfo.champion;
-            const champInfo = championInfoMap.get(championName);
+
+            const actualChampionName = championName || '알 수 없음';
+
+            const champInfo = championInfoMap.get(actualChampionName);
+
             return {
-                champion: championName,
+                champion: actualChampionName,
                 championImageUrl: champInfo?.imageUrl || null,
                 win: match.didWin,
                 matchId: match.matchId,

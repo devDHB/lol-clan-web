@@ -55,6 +55,17 @@ interface ChampionInfo {
     imageUrl: string;
 }
 
+// 직렬화 가능한 값들의 타입 정의
+type SerializableValue = string | number | boolean | null | undefined | Date | SerializableValue[] | SerializableObject;
+
+interface SerializableObject {
+    [key: string]: SerializableValue;
+}
+
+interface FirestoreTimestamp {
+    toDate(): Date;
+}
+
 // --- 공통 함수: Riot API 챔피언 목록 가져오기 (캐싱 포함) ---
 let championList: ChampionInfo[] = [];
 let lastFetched: number = 0;
@@ -125,24 +136,38 @@ export async function GET(
 
         // 2. blueTeam과 redTeam 데이터에 이미지 URL을 추가합니다.
         if (data) {
-            const addImageUrl = (teamData: any[]) => (teamData || []).map(player => ({
+            const addImageUrl = (teamData: Applicant[]) => (teamData || []).map(player => ({
                 ...player,
-                championImageUrl: championImageMap.get(player.champion) || null
+                championImageUrl: championImageMap.get(player.champion || '') || null
             }));
 
             data.blueTeam = addImageUrl(data.blueTeam);
             data.redTeam = addImageUrl(data.redTeam);
         }
 
+        function isFirestoreTimestamp(obj: any): obj is FirestoreTimestamp {
+            return (
+                typeof obj === 'object' &&
+                obj !== null &&
+                'toDate' in obj &&
+                typeof (obj as FirestoreTimestamp).toDate === 'function'
+            );
+        }
+
         // 3. 모든 Timestamp를 문자열로 변환합니다.
-        const serializeData = (obj: any): any => {
+        const serializeData = (obj: SerializableValue): SerializableValue => {
             if (!obj) return obj;
-            if (obj.toDate && typeof obj.toDate === 'function') return obj.toDate().toISOString();
-            if (Array.isArray(obj)) return obj.map(serializeData);
-            if (typeof obj === 'object') {
-                const newObj: { [key: string]: any } = {};
-                for (const key in obj) {
-                    newObj[key] = serializeData(obj[key]);
+            // 변경된 부분: 타입 가드 함수를 사용합니다.
+            if (isFirestoreTimestamp(obj)) {
+                return obj.toDate().toISOString();
+            }
+            if (Array.isArray(obj)) {
+                return obj.map(serializeData);
+            }
+            if (typeof obj === 'object' && obj !== null) {
+                const newObj: SerializableObject = {};
+                for (const key in obj as SerializableObject) {
+                    newObj[key] = serializeData((obj as SerializableObject)[key]);
                 }
                 return newObj;
             }
@@ -152,7 +177,7 @@ export async function GET(
         const finalData = serializeData({
             scrimId: doc.id,
             ...data,
-        });
+        } as SerializableObject);
 
         return NextResponse.json(finalData);
 
@@ -258,7 +283,7 @@ export async function PUT(
         const scrimId = Array.isArray(resolvedParams.scrimId) ? resolvedParams.scrimId[0] : resolvedParams.scrimId;
 
         const body = await request.json();
-        const { action, applicantData, userEmail, teams, winningTeam, championData, memberEmailToRemove } = body;
+        const { action, applicantData, userEmail } = body;
 
         if (!scrimId || !action) {
             return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
@@ -273,13 +298,21 @@ export async function PUT(
 
             const data = doc.data() as ScrimData; // ScrimData 타입으로 명시적으로 캐스팅
             // body에서 필요한 변수들을 이 안에서 구조분해 할당합니다.
-            const { applicantData, teams, winningTeam, championData, memberEmailToRemove, scrimType } = body;
+            const { teams, winningTeam, championData, memberEmailToRemove, scrimType } = body;
 
             // Firestore에서 받아온 데이터를 타입 가드와 기본값으로 안전하게 초기화
-            let applicants: Applicant[] = (data?.applicants || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
-            let waitlist: Applicant[] = (data?.waitlist || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
-            let blueTeam: Applicant[] = (data?.blueTeam || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
-            let redTeam: Applicant[] = (data?.redTeam || []).filter((item: any): item is Applicant => item && typeof item === 'object' && typeof item.email === 'string');
+            const applicants: Applicant[] = (data?.applicants || []).filter((item: unknown): item is Applicant => 
+                item !== null && typeof item === 'object' && 'email' in item && typeof (item as Applicant).email === 'string'
+            );
+            const waitlist: Applicant[] = (data?.waitlist || []).filter((item: unknown): item is Applicant => 
+                item !== null && typeof item === 'object' && 'email' in item && typeof (item as Applicant).email === 'string'
+            );
+            const blueTeam: Applicant[] = (data?.blueTeam || []).filter((item: unknown): item is Applicant => 
+                item !== null && typeof item === 'object' && 'email' in item && typeof (item as Applicant).email === 'string'
+            );
+            const redTeam: Applicant[] = (data?.redTeam || []).filter((item: unknown): item is Applicant => 
+                item !== null && typeof item === 'object' && 'email' in item && typeof (item as Applicant).email === 'string'
+            );
 
             let hasPermission = true;
             // 'reset_peerless' 액션도 권한 확인 대상에 포함
@@ -298,7 +331,7 @@ export async function PUT(
                     transaction.update(scrimRef, { applicants: admin.firestore.FieldValue.arrayUnion(applicantData) });
                     break;
                 case 'leave':
-                    let newApplicantsAfterLeave = applicants.filter((a) => a.email !== applicantData.email);
+                    const newApplicantsAfterLeave = applicants.filter((a) => a.email !== applicantData.email);
                     if (newApplicantsAfterLeave.length < 10 && waitlist.length > 0) {
                         const newMember = waitlist.shift(); // 대기열에서 한 명을 끌어올림
                         if (newMember) newApplicantsAfterLeave.push(newMember);
@@ -403,8 +436,6 @@ export async function PUT(
                     });
                     break;
                 case 'end_game': {
-                    const { winningTeam, championData, scrimType } = body;
-
                     // 새로운 match 문서를 생성하고 데이터를 저장합니다.
                     const newMatchDocRef = db.collection('matches').doc();
                     const matchData = {
@@ -488,52 +519,50 @@ export async function PUT(
                 }
                 // 'remove_member' 케이스 수정
                 case 'remove_member': {
-                    const { memberEmailToRemove } = body;
-
-                    let applicants: Applicant[] = data.applicants || [];
-                    let waitlist: Applicant[] = data.waitlist || [];
-                    let blueTeam: Applicant[] = data.blueTeam || [];
-                    let redTeam: Applicant[] = data.redTeam || [];
+                    let updatedApplicants: Applicant[] = data.applicants || [];
+                    let updatedWaitlist: Applicant[] = data.waitlist || [];
+                    let updatedBlueTeam: Applicant[] = data.blueTeam || [];
+                    let updatedRedTeam: Applicant[] = data.redTeam || [];
 
                     // 어떤 리스트에서 제거되었는지 확인하기 위한 플래그
                     let wasRemovedFromMainList = false;
 
-                    const initialApplicantsCount = applicants.length;
-                    applicants = applicants.filter(p => p.email !== memberEmailToRemove);
-                    if (initialApplicantsCount > applicants.length) {
+                    const initialApplicantsCount = updatedApplicants.length;
+                    updatedApplicants = updatedApplicants.filter(p => p.email !== memberEmailToRemove);
+                    if (initialApplicantsCount > updatedApplicants.length) {
                         wasRemovedFromMainList = true;
                     }
 
                     // '모집중'이 아닐 때 팀 목록에서도 제거 확인
                     if (data.status !== '모집중') {
-                        const initialBlueTeamCount = blueTeam.length;
-                        blueTeam = blueTeam.filter(p => p.email !== memberEmailToRemove);
-                        if (initialBlueTeamCount > blueTeam.length) {
+                        const initialBlueTeamCount = updatedBlueTeam.length;
+                        updatedBlueTeam = updatedBlueTeam.filter(p => p.email !== memberEmailToRemove);
+                        if (initialBlueTeamCount > updatedBlueTeam.length) {
                             wasRemovedFromMainList = true;
                         }
 
-                        const initialRedTeamCount = redTeam.length;
-                        redTeam = redTeam.filter(p => p.email !== memberEmailToRemove);
-                        if (initialRedTeamCount > redTeam.length) {
+                        const initialRedTeamCount = updatedRedTeam.length;
+                        updatedRedTeam = updatedRedTeam.filter(p => p.email !== memberEmailToRemove);
+                        if (initialRedTeamCount > updatedRedTeam.length) {
                             wasRemovedFromMainList = true;
                         }
                     }
 
-                    waitlist = waitlist.filter(p => p.email !== memberEmailToRemove);
+                    updatedWaitlist = updatedWaitlist.filter(p => p.email !== memberEmailToRemove);
 
                     // '모집중' 상태일 때, 참가자 목록에서 인원이 줄었고 대기자가 있다면 한 명을 올립니다.
-                    if (data.status === '모집중' && wasRemovedFromMainList && waitlist.length > 0) {
-                        const newMember = waitlist.shift(); // 대기열 첫번째 유저를 꺼냄
+                    if (data.status === '모집중' && wasRemovedFromMainList && updatedWaitlist.length > 0) {
+                        const newMember = updatedWaitlist.shift(); // 대기열 첫번째 유저를 꺼냄
                         if (newMember) {
-                            applicants.push(newMember); // 참가자 목록에 추가
+                            updatedApplicants.push(newMember); // 참가자 목록에 추가
                         }
                     }
 
                     transaction.update(scrimRef, {
-                        applicants,
-                        waitlist,
-                        blueTeam,
-                        redTeam
+                        applicants: updatedApplicants,
+                        waitlist: updatedWaitlist,
+                        blueTeam: updatedBlueTeam,
+                        redTeam: updatedRedTeam
                     });
                     break;
                 }
@@ -541,7 +570,6 @@ export async function PUT(
                     throw new Error("알 수 없는 요청입니다.");
             }
         });
-        // }
 
         return NextResponse.json({ message: '작업이 성공적으로 완료되었습니다.' });
 

@@ -22,17 +22,27 @@ interface RankedPosition {
     rank: number;
 }
 
-type ScrimAction = "apply" | "leave" | "apply_waitlist" | "leave_waitlist" | "start_team_building" | "start_game" | "end_game" | "reset_to_team_building" | "reset_to_recruiting" | "remove_member" | "reset_peerless";
+interface User {
+    email: string;
+}
 
+interface ScrimActionPayload {
+    memberEmailToRemove?: string;
+    nickname?: string;
+    tier?: string;
+    positions?: string[];
+}
+
+type ScrimAction = "apply" | "leave" | "apply_waitlist" | "leave_waitlist" | "start_team_building" | "start_game" | "end_game" | "reset_to_team_building" | "reset_to_recruiting" | "remove_member" | "reset_peerless";
 
 interface WaitlistSectionProps {
     scrim: ScrimData;
-    user: any; // 실제 User 타입으로 교체하는 것이 좋습니다 (예: User | null)
+    user: User | null;
     canManage: boolean;
     isApplicant: boolean;
     isInWaitlist: boolean;
     isWaitlistFull: boolean;
-    handleScrimAction: (action: ScrimAction, payload?: any) => void;
+    handleScrimAction: (action: ScrimAction, payload?: ScrimActionPayload) => void;
 }
 
 const POSITIONS = ['TOP', 'JG', 'MID', 'AD', 'SUP'];
@@ -85,7 +95,7 @@ export default function WaitlistSection({
             const targetPos = prev.find(p => p.name === posName);
             if (!targetPos) return prev;
             const existingRankedPos = prev.find(p => p.rank === newRank);
-            let updatedPositions = prev.map(p => {
+            const updatedPositions = prev.map(p => {
                 if (p.name === posName) {
                     return { ...p, rank: newRank };
                 } else if (existingRankedPos && p.name === existingRankedPos.name) {
@@ -107,7 +117,7 @@ export default function WaitlistSection({
             if (selectedPositions.length === 0) return alert('포지션을 선택해주세요.');
         }
 
-        const applicantData = {
+        const applicantData: ScrimActionPayload = {
             tier: scrim.scrimType === '칼바람' ? 'U' : tier,
             positions: scrim.scrimType === '칼바람' ? [] : selectedPositions.map(p => `${p.name} (${p.rank}순위)`)
         };
@@ -141,45 +151,49 @@ export default function WaitlistSection({
                         <div className="p-4 bg-gray-700 rounded-lg text-left space-y-4">
                             <h4 className="font-bold text-center">대기열 참가 신청</h4>
 
-                            {/* 티어 선택 */}
-                            <div>
-                                <label htmlFor="tier-waitlist" className="block text-sm font-medium text-gray-300 mb-1">현재 티어</label>
-                                <select id="tier-waitlist" value={tier} onChange={(e) => setTier(e.target.value)} className="w-full px-3 py-2 bg-gray-800 rounded-md">
-                                    <option value="" disabled>티어를 선택하세요</option>
-                                    {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
-
-                            {/* 포지션 선택 */}
-                            <div>
-                                <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
-                                <div className="flex flex-wrap gap-2 mb-4">
-                                    <button onClick={() => handlePositionClick('ALL')} className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600'}`}>
-                                        ALL
-                                    </button>
-                                    <div className="w-full border-t border-gray-600 my-2"></div>
-                                    {POSITIONS.map(pos => (
-                                        <button key={pos} onClick={() => handlePositionClick(pos)} disabled={selectedPositions.some(p => p.name === 'ALL') || (selectedPositions.length >= 3 && !selectedPositions.some(p => p.name === pos))} className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === pos) ? 'bg-blue-500' : 'bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}>
-                                            {pos}
-                                        </button>
-                                    ))}
-                                </div>
-                                {selectedPositions.length > 0 && !selectedPositions.some(p => p.name === 'ALL') && (
-                                    <div className="space-y-2 mt-4">
-                                        <p className="text-sm font-medium text-gray-300">선택된 포지션 순위 지정:</p>
-                                        {selectedPositions.map((p) => (
-                                            <div key={p.name} className="flex items-center gap-2 bg-gray-800 p-2 rounded-md">
-                                                <span className="font-semibold text-white">{p.name}</span>
-                                                <select value={p.rank} onChange={(e) => handleRankChange(p.name, parseInt(e.target.value))} className="ml-auto px-2 py-1 bg-gray-600 rounded-md text-white">
-                                                    {[...Array(selectedPositions.length)].map((_, i) => (
-                                                        <option key={i + 1} value={i + 1}>{i + 1} 순위</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        ))}
+                            {scrim.scrimType !== '칼바람' && (
+                                <>
+                                    {/* 티어 선택 */}
+                                    <div>
+                                        <label htmlFor="tier-waitlist" className="block text-sm font-medium text-gray-300 mb-1">현재 티어</label>
+                                        <select id="tier-waitlist" value={tier} onChange={(e) => setTier(e.target.value)} className="w-full px-3 py-2 bg-gray-800 rounded-md">
+                                            <option value="" disabled>티어를 선택하세요</option>
+                                            {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
                                     </div>
-                                )}
-                            </div>
+
+                                    {/* 포지션 선택 */}
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
+                                        <div className="flex flex-wrap gap-2 mb-4">
+                                            <button onClick={() => handlePositionClick('ALL')} className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600'}`}>
+                                                ALL
+                                            </button>
+                                            <div className="w-full border-t border-gray-600 my-2"></div>
+                                            {POSITIONS.map(pos => (
+                                                <button key={pos} onClick={() => handlePositionClick(pos)} disabled={selectedPositions.some(p => p.name === 'ALL') || (selectedPositions.length >= 3 && !selectedPositions.some(p => p.name === pos))} className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === pos) ? 'bg-blue-500' : 'bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                                                    {pos}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {selectedPositions.length > 0 && !selectedPositions.some(p => p.name === 'ALL') && (
+                                            <div className="space-y-2 mt-4">
+                                                <p className="text-sm font-medium text-gray-300">선택된 포지션 순위 지정:</p>
+                                                {selectedPositions.map((p) => (
+                                                    <div key={p.name} className="flex items-center gap-2 bg-gray-800 p-2 rounded-md">
+                                                        <span className="font-semibold text-white">{p.name}</span>
+                                                        <select value={p.rank} onChange={(e) => handleRankChange(p.name, parseInt(e.target.value))} className="ml-auto px-2 py-1 bg-gray-600 rounded-md text-white">
+                                                            {[...Array(selectedPositions.length)].map((_, i) => (
+                                                                <option key={i + 1} value={i + 1}>{i + 1} 순위</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
 
                             <div className="flex gap-2 pt-2">
                                 <button onClick={handleApplyToWaitlist} className="w-full py-2 bg-green-600 hover:bg-green-700 rounded-md font-semibold">

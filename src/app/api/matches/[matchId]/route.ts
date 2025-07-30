@@ -21,6 +21,17 @@ interface MatchPlayer {
     championImageUrl?: string;
 }
 
+// Firestore 데이터를 위한 타입 정의
+interface FirestoreTimestamp {
+    toDate(): Date;
+}
+
+// 직렬화 가능한 값들의 타입 정의
+type SerializableValue = string | number | boolean | null | undefined | Date | FirestoreTimestamp | SerializableObject | SerializableValue[];
+
+interface SerializableObject {
+    [key: string]: SerializableValue;
+}
 
 // --- 공통 함수: Riot API 챔피언 목록 가져오기 (캐싱 포함) ---
 let championList: ChampionInfo[] = [];
@@ -94,18 +105,20 @@ export async function GET(
             data.redTeam = addImageUrl(data.redTeam);
         }
 
-        const serializeData = (obj: Record<string, any>): Record<string, unknown> => {
+        const serializeData = (obj: SerializableObject): SerializableObject => {
             if (!obj) return obj;
 
-            const newObj: { [key: string]: unknown } = {};
+            const newObj: SerializableObject = {};
             for (const key in obj) {
                 const value = obj[key];
-                if (value && typeof value.toDate === 'function') {
-                    newObj[key] = value.toDate().toISOString();
+                if (value && typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
+                    newObj[key] = (value as FirestoreTimestamp).toDate().toISOString();
                 } else if (Array.isArray(value)) {
-                    newObj[key] = value.map(item => (typeof item === 'object' && item !== null) ? serializeData(item) : item);
+                    newObj[key] = value.map(item => 
+                        (typeof item === 'object' && item !== null) ? serializeData(item as SerializableObject) : item
+                    );
                 } else if (typeof value === 'object' && value !== null) {
-                    newObj[key] = serializeData(value);
+                    newObj[key] = serializeData(value as SerializableObject);
                 } else {
                     newObj[key] = value;
                 }
@@ -116,7 +129,7 @@ export async function GET(
         const finalData = serializeData({
             matchId: doc.id,
             ...data,
-        });
+        } as SerializableObject);
 
         return NextResponse.json(finalData);
 

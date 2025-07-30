@@ -112,8 +112,12 @@ export default function ScrimsPage() {
       setNewScrimName('');
       setCreateMode(null);
       fetchData();
-    } catch (error: any) {
-      alert(`내전 생성 실패: ${error.message}`);
+    } catch (error) {
+      if (error instanceof Error) {
+        alert(`내전 생성 실패: ${error.message}`);
+      } else {
+        alert('내전 생성 중 알 수 없는 오류가 발생했습니다.');
+      }
     }
   };
 

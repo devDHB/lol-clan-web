@@ -43,11 +43,10 @@ const scrimTypeColors: { [key: string]: string } = {
 };
 
 // --- 서브 컴포넌트: 챔피언 검색 ---
-function ChampionSearchInput({ value, onChange, placeholder, playerId }: {
+function ChampionSearchInput({ value, onChange, placeholder }: {
     value: string;
     onChange: (championName: string) => void;
     placeholder: string;
-    playerId: string;
 }) {
     const [searchTerm, setSearchTerm] = useState(value);
     const [searchResults, setSearchResults] = useState<ChampionInfo[]>([]);
@@ -176,8 +175,12 @@ export default function MatchDetailPage() {
             alert('챔피언이 수정되었습니다.');
             setEditingPlayer(null);
             fetchData();
-        } catch (error: any) {
-            alert(error.message);
+        } catch (error) {
+            if (error instanceof Error) {
+                alert(error.message);
+            } else {
+                alert('알 수 없는 오류가 발생했습니다.');
+            }
         }
     };
 
@@ -197,8 +200,12 @@ export default function MatchDetailPage() {
             }
             alert('경기 기록이 삭제되었습니다.');
             router.push('/matches');
-        } catch (error: any) {
-            alert(error.message);
+        } catch (error) {
+            if (error instanceof Error) {
+                alert(error.message);
+            } else {
+                alert('알 수 없는 오류가 발생했습니다.');
+            }
         }
     };
 
@@ -265,7 +272,7 @@ export default function MatchDetailPage() {
 
                                         {editingPlayer?.email === player.email ? (
                                             <div className="flex items-center gap-1">
-                                                <ChampionSearchInput value={newChampion} onChange={setNewChampion} placeholder="챔피언 검색" playerId={player.email} />
+                                                <ChampionSearchInput value={newChampion} onChange={setNewChampion} placeholder="챔피언 검색" />
                                                 <button onClick={handleUpdateChampion} className="p-1 bg-green-600 rounded text-xs">✓</button>
                                                 <button onClick={() => setEditingPlayer(null)} className="p-1 bg-gray-600 rounded text-xs">X</button>
                                             </div>
@@ -298,7 +305,7 @@ export default function MatchDetailPage() {
 
                                         {editingPlayer?.email === player.email ? (
                                             <div className="flex items-center gap-1">
-                                                <ChampionSearchInput value={newChampion} onChange={setNewChampion} placeholder="챔피언 검색" playerId={player.email} />
+                                                <ChampionSearchInput value={newChampion} onChange={setNewChampion} placeholder="챔피언 검색" />
                                                 <button onClick={handleUpdateChampion} className="p-1 bg-green-600 rounded text-xs">✓</button>
                                                 <button onClick={() => setEditingPlayer(null)} className="p-1 bg-gray-600 rounded text-xs">X</button>
                                             </div>

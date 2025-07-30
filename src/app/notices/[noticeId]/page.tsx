@@ -101,8 +101,12 @@ export default function NoticeDetailPage() {
       }
       alert('공지사항이 삭제되었습니다.');
       router.push('/notices');
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error) {
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert('알 수 없는 오류가 발생했습니다.');
+      }
     }
   };
 
