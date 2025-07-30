@@ -67,6 +67,13 @@ interface ChampionInfo {
     imageUrl: string;
 }
 
+type ScrimActionPayload = {
+    nickname?: string;
+    memberEmailToRemove?: string;
+    winningTeam?: 'blue' | 'red';
+    scrimType?: string;
+};
+
 const POSITIONS = ['TOP', 'JG', 'MID', 'AD', 'SUP'];
 const TIERS = ['C', 'M', 'D', 'E', 'P', 'G', 'S', 'I', 'U'];
 
@@ -436,7 +443,7 @@ export default function ScrimDetailPage() {
     };
 
 
-    const handleScrimAction = async (action: string, payload?: any) => {
+    const handleScrimAction = async (action: string, payload?: ScrimActionPayload) => {
         if (!user || !user.email) return alert('로그인이 필요합니다.');
 
         let body: any = { action, userEmail: user.email };
@@ -476,8 +483,10 @@ export default function ScrimDetailPage() {
 
             // --- 멤버 제외 처리 ---
             else if (action === 'remove_member') {
-                if (!confirm(`'${payload.nickname}'님을 내전에서 제외하시겠습니까?`)) return;
-                body.memberEmailToRemove = payload.memberEmailToRemove;
+                if (payload && payload.nickname && payload.memberEmailToRemove) {
+                    if (!confirm(`'${payload.nickname}'님을 내전에서 제외하시겠습니까?`)) return;
+                    body.memberEmailToRemove = payload.memberEmailToRemove;
+                }
             }
 
             // --- 경기 시작 처리 ---
@@ -500,8 +509,11 @@ export default function ScrimDetailPage() {
             // --- 경기 종료 처리 (assignedPosition 포함하도록 수정) ---
             else if (action === 'end_game') {
                 // 승리팀 확정 시 확인 창 추가
-                if (!confirm(`${payload.winningTeam === 'blue' ? '블루팀' : '레드팀'}의 승리를 확정하시겠습니까?`)) {
-                    return;
+                if (payload && payload.winningTeam) {
+                    if (!confirm(`${payload.winningTeam === 'blue' ? '블루팀' : '레드팀'}의 승리를 확정하시겠습니까?`)) {
+                        return;
+                    }
+                    body.winningTeam = payload.winningTeam;
                 }
 
                 if (scrim?.scrimType !== '칼바람') {
@@ -528,7 +540,7 @@ export default function ScrimDetailPage() {
                     }
                 }
 
-                body.winningTeam = payload.winningTeam;
+                body.winningTeam = payload?.winningTeam;
                 body.scrimType = scrim?.scrimType;
                 body.championData = {
                     blueTeam: Object.keys(blueTeamSlots).filter(pos => blueTeamSlots[pos]).map(pos => ({
