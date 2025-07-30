@@ -102,7 +102,7 @@ async function checkAdminPermission(email: string): Promise<boolean> {
 
 export async function GET(
     _request: NextRequest,
-    { params }: { params: { scrimId: string } }
+    { params }: { params: Promise<{ scrimId: string }> }
 ) {
     try {
         const { scrimId } = await params;
@@ -166,7 +166,7 @@ export async function GET(
 // PATCH: 내전 제목과 경기 챔피언 수정을 모두 처리하는 통합 함수
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { scrimId: string } }
+    { params }: { params: Promise<{ scrimId: string }> }
 ) {
     try {
         const { scrimId } = await params;
@@ -251,7 +251,7 @@ export async function PATCH(
 // PUT: 내전의 모든 상태 변경을 처리하는 통합 함수
 export async function PUT(
     request: NextRequest,
-    { params }: { params: { scrimId: string | string[] } }
+    { params }: { params: Promise<{ scrimId: string | string[] }> }
 ) {
     try {
         const resolvedParams = await params;
@@ -555,11 +555,16 @@ export async function PUT(
 // DELETE: 내전을 해체하는 함수
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { scrimId: string | string[] } }
+    { params }: { params: Promise<{ scrimId: string | string[] }> }
 ) {
     try {
-        const scrimId = Array.isArray(params.scrimId) ? params.scrimId[0] : params.scrimId;
+        const resolvedParams = await params;
+        const scrimId = Array.isArray(resolvedParams.scrimId) ? resolvedParams.scrimId[0] : resolvedParams.scrimId;
         const { userEmail } = await request.json();
+
+        if (!scrimId || !userEmail) {
+            return NextResponse.json({ error: '내전 ID와 사용자 이메일이 필요합니다.' }, { status: 400 });
+        }
 
         if (!scrimId || !userEmail) {
             return NextResponse.json({ error: '내전 ID와 사용자 이메일이 필요합니다.' }, { status: 400 });

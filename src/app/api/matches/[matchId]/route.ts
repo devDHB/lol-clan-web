@@ -66,7 +66,7 @@ async function isSuperAdmin(email: string): Promise<boolean> {
 // --- API 핸들러: GET (매치 상세 정보 조회) ---
 export async function GET(
     _request: NextRequest,
-    { params }: { params: { matchId: string } }
+    { params }: { params: Promise<{ matchId: string }> }
 ) {
     try {
         const { matchId } = await params;
@@ -128,7 +128,7 @@ export async function GET(
 // PATCH: 챔피언 정보 수정을 처리하는 함수
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { matchId: string } }
+    { params }: { params: Promise<{ matchId: string }> }
 ) {
     try {
         const { matchId } = await params;
@@ -180,7 +180,7 @@ export async function PATCH(
 // DELETE: 매치 기록을 삭제하는 함수 (총관리자 전용)
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { matchId: string } }
+    { params }: { params: Promise<{ matchId: string }> }
 ) {
     try {
         const { matchId } = await params;
