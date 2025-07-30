@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
 
@@ -42,11 +42,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     try {
         const { email, password, nickname, role, requesterEmail } = await request.json();
-        if (!requesterEmail || !(await isAdmin(requesterEmail))) {
+        const requesterIsAdmin = await isAdmin(requesterEmail);
+        const requesterIsSuperAdmin = await isSuperAdmin(requesterEmail);
+
+        if (!requesterEmail || !requesterIsAdmin) {
             return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
         }
-        if (role === '총관리자') {
-            return NextResponse.json({ error: '총관리자 역할은 부여할 수 없습니다.' }, { status: 403 });
+        if (role === '총관리자' || (role === '관리자' && !requesterIsSuperAdmin)) {
+            return NextResponse.json({ error: '해당 역할을 부여할 권한이 없습니다.' }, { status: 403 });
         }
 
         const usersCollection = db.collection('users');
@@ -92,7 +95,7 @@ export async function PUT(request: Request) {
         }
         const targetUserRole = targetUserDoc.data()?.role;
 
-        // 권한 검증 로직
+        // ✅ [수정] 권한 검증 로직 세분화
         if (requesterRole === '총관리자') {
             if (targetUserRole === '총관리자') {
                 return NextResponse.json({ error: '총관리자의 역할은 변경할 수 없습니다.' }, { status: 403 });
