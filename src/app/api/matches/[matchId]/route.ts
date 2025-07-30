@@ -144,7 +144,7 @@ export async function GET(
 // PATCH: 챔피언 정보 수정을 처리하는 함수
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { matchId: string } }
+    { params }: { params: Promise<{ matchId: string }> }  // Promise로 변경
 ) {
     try {
         const { matchId } = await params;
@@ -194,7 +194,7 @@ export async function PATCH(
 // DELETE: 매치 기록을 삭제하는 함수 (총관리자 전용)
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { matchId: string } }
+    { params }: { params: Promise<{ matchId: string }> }  // Promise로 변경
 ) {
     try {
         const { matchId } = await params;
