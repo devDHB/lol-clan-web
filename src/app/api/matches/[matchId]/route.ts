@@ -74,10 +74,10 @@ async function isSuperAdmin(email: string): Promise<boolean> {
 // --- API 핸들러: GET (매치 상세 정보 조회) ---
 export async function GET(
     _request: NextRequest,
-    { params }: { params: { matchId: string } }
+    { params }: { params: Promise<{ matchId: string }> }  // Promise로 변경
 ) {
     try {
-        const { matchId } = await params;
+        const { matchId } = await params;  // 이미 await 사용하고 있으니 OK
         if (!matchId) {
             return NextResponse.json({ error: '매치 ID가 필요합니다.' }, { status: 400 });
         }
