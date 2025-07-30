@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { promises } from 'dns';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,7 +81,8 @@ async function getChampionList() {
 
 export async function GET(
     _request: NextRequest,
-    { params }: { params: { email: string } }
+    { params }: { params: Promise<{ email: string }> }
+
 ) {
     try {
         const resolvedParams = await params;
