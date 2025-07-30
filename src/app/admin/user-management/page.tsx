@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/components/AuthProvider';
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 interface UserData {
@@ -17,6 +18,7 @@ interface UserProfile {
 
 export default function UserManagementPage() {
     const { user } = useAuth();
+    const router = useRouter();
     const [users, setUsers] = useState<UserData[]>([]);
     const [loading, setLoading] = useState(true);
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -76,10 +78,8 @@ export default function UserManagementPage() {
             alert('사용자가 추가되었습니다.');
             setNewUserEmail(''); setNewUserPassword(''); setNewUserNickname('');
             fetchUsers();
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                alert(`사용자 추가 실패: ${error.message}`);
-            }
+        } catch (error: any) {
+            alert(`사용자 추가 실패: ${error.message}`);
         }
     };
 
@@ -93,10 +93,8 @@ export default function UserManagementPage() {
             });
             if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
             fetchUsers();
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                alert(`역할 변경 실패: ${error.message}`);
-            }
+        } catch (error: any) {
+            alert(`역할 변경 실패: ${error.message}`);
             fetchUsers();
         }
     };
@@ -112,11 +110,7 @@ export default function UserManagementPage() {
             if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
             setEditingNicknameId(null);
             fetchUsers();
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                alert(`닉네임 변경 실패: ${error.message}`);
-            }
-        }
+        } catch (error: any) { alert(`닉네임 변경 실패: ${error.message}`); }
     };
 
     const handleDeleteUser = async (userId: string, userEmail: string) => {
@@ -129,11 +123,7 @@ export default function UserManagementPage() {
             });
             if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
             fetchUsers();
-        } catch (error: unknown) {
-            if (error instanceof Error) {
-                alert(`사용자 삭제 실패: ${error.message}`);
-            }
-        }
+        } catch (error: any) { alert(`사용자 삭제 실패: ${error.message}`); }
     };
 
     if (loading) {
@@ -180,45 +170,53 @@ export default function UserManagementPage() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700">
-                        {users.map(u => (
-                            <tr key={u.id}>
-                                <td className="p-3">{u.email}</td>
-                                <td className="p-3">
-                                    {editingNicknameId === u.id ? (
-                                        <div className="flex gap-2">
-                                            <input type="text" value={newNickname} onChange={e => setNewNickname(e.target.value)} className="bg-gray-700 p-1 rounded w-full" />
-                                            <button onClick={() => handleUpdateNickname(u.id)} className="bg-green-600 px-2 rounded">저장</button>
-                                            <button onClick={() => setEditingNicknameId(null)} className="bg-gray-600 px-2 rounded">취소</button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex justify-between items-center">
-                                            <span>{u.nickname}</span>
-                                            {profile?.role === '총관리자' && (
-                                                <button onClick={() => { setEditingNicknameId(u.id); setNewNickname(u.nickname); }} className="text-xs ml-2 text-blue-400 hover:underline">변경</button>
-                                            )}
-                                        </div>
-                                    )}
-                                </td>
-                                <td className="p-3">
-                                    <select
-                                        value={u.role}
-                                        onChange={e => handleUpdateRole(u.id, e.target.value)}
-                                        className="bg-gray-700 p-1 rounded"
-                                        disabled={profile?.role !== '총관리자' || u.role === '총관리자'}
-                                    >
-                                        <option value="일반">일반</option>
-                                        <option value="내전관리자">내전관리자</option>
-                                        <option value="관리자">관리자</option>
-                                        {u.role === '총관리자' && <option value="총관리자">총관리자</option>}
-                                    </select>
-                                </td>
-                                <td className="p-3 text-center">
-                                    {profile?.role === '총관리자' && u.role !== '총관리자' && (
-                                        <button onClick={() => handleDeleteUser(u.id, u.email)} className="text-red-500 hover:text-red-400">삭제</button>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
+                        {users.map(u => {
+                            const canEditRole = profile?.role === '총관리자' || (profile?.role === '관리자' && u.role !== '총관리자' && u.role !== '관리자');
+
+                            return (
+                                <tr key={u.id}>
+                                    <td className="p-3">{u.email}</td>
+                                    <td className="p-3">
+                                        {editingNicknameId === u.id ? (
+                                            <div className="flex gap-2">
+                                                <input type="text" value={newNickname} onChange={e => setNewNickname(e.target.value)} className="bg-gray-700 p-1 rounded w-full" />
+                                                <button onClick={() => handleUpdateNickname(u.id)} className="bg-green-600 px-2 rounded">저장</button>
+                                                <button onClick={() => setEditingNicknameId(null)} className="bg-gray-600 px-2 rounded">취소</button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex justify-between items-center">
+                                                <span>{u.nickname}</span>
+                                                {profile?.role === '총관리자' && (
+                                                    <button onClick={() => { setEditingNicknameId(u.id); setNewNickname(u.nickname); }} className="text-xs ml-2 text-blue-400 hover:underline">변경</button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="p-3">
+                                        {/* ✅ [수정] 총관리자 역할은 변경 불가능하도록 처리 */}
+                                        {u.role === '총관리자' ? (
+                                            <span className="px-2 py-1 bg-yellow-600 text-yellow-100 text-sm rounded">총관리자</span>
+                                        ) : (
+                                            <select
+                                                value={u.role}
+                                                onChange={e => handleUpdateRole(u.id, e.target.value)}
+                                                className="bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                                                disabled={!canEditRole}
+                                            >
+                                                <option value="관리자">관리자</option>
+                                                <option value="내전관리자">내전관리자</option>
+                                                <option value="일반">일반</option>
+                                            </select>
+                                        )}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                        {profile?.role === '총관리자' && u.role !== '총관리자' && (
+                                            <button onClick={() => handleDeleteUser(u.id, u.email)} className="text-red-500 hover:text-red-400">삭제</button>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

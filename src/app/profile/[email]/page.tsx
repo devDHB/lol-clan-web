@@ -92,12 +92,8 @@ export default function ProfilePage() {
                 setAllUsers(await allUsersRes.json());
             }
 
-        } catch (err) {
-            if (err instanceof Error) {
-                setError(err.message);
-            } else {
-                setError('알 수 없는 오류가 발생했습니다.');
-            }
+        } catch (err: any) {
+            setError(err.message);
         } finally {
             setLoading(false);
         }

@@ -11,32 +11,11 @@ interface ChampionInfo {
     imageUrl: string;
 }
 
-interface MatchPlayer {
-    email: string;
-    nickname: string;
-    tier: string;
-    positions: string[];
-    champion?: string;
-    assignedPosition?: string;
-    championImageUrl?: string;
-}
-
-// Firestore 데이터를 위한 타입 정의
-interface FirestoreTimestamp {
-    toDate(): Date;
-}
-
-// 직렬화 가능한 값들의 타입 정의
-type SerializableValue = string | number | boolean | null | undefined | Date | FirestoreTimestamp | SerializableObject | SerializableValue[];
-
-interface SerializableObject {
-    [key: string]: SerializableValue;
-}
-
 // --- 공통 함수: Riot API 챔피언 목록 가져오기 (캐싱 포함) ---
 let championList: ChampionInfo[] = [];
 let lastFetched: number = 0;
 const CACHE_DURATION = 1000 * 60 * 60; // 1시간 캐시
+
 
 async function getChampionList() {
     if (Date.now() - lastFetched > CACHE_DURATION || championList.length === 0) {
@@ -62,6 +41,19 @@ async function getChampionList() {
     return championList;
 }
 
+// --- 공통 함수: 관리자 권한 확인 ---
+async function checkAdminPermission(email: string): Promise<boolean> {
+    try {
+        const userDoc = await db.collection('users').where('email', '==', email).limit(1).get();
+        if (userDoc.empty) return false;
+        const userData = userDoc.docs[0].data();
+        return userData?.role === '총관리자' || userData?.role === '관리자';
+    } catch (error) {
+        console.error('관리자 권한 확인 중 에러 발생:', error);
+        return false;
+    }
+}
+
 // --- 공통 함수: 총관리자 권한 확인 ---
 async function isSuperAdmin(email: string): Promise<boolean> {
     if (!email) return false;
@@ -74,10 +66,10 @@ async function isSuperAdmin(email: string): Promise<boolean> {
 // --- API 핸들러: GET (매치 상세 정보 조회) ---
 export async function GET(
     _request: NextRequest,
-    { params }: { params: Promise<{ matchId: string }> }  // Promise로 변경
+    { params }: { params: { matchId: string } }
 ) {
     try {
-        const { matchId } = await params;  // 이미 await 사용하고 있으니 OK
+        const { matchId } = await params;
         if (!matchId) {
             return NextResponse.json({ error: '매치 ID가 필요합니다.' }, { status: 400 });
         }
@@ -95,41 +87,33 @@ export async function GET(
         const data = doc.data();
 
         if (data) {
-            const addImageUrl = (teamData: MatchPlayer[]) => (teamData || []).map(player => ({
+            const addImageUrl = (teamData: any[]) => (teamData || []).map(player => ({
                 ...player,
-                // ✅ [수정] player.champion이 존재할 때만 get을 호출하도록 변경
-                championImageUrl: player.champion ? championImageMap.get(player.champion) || null : null
+                championImageUrl: championImageMap.get(player.champion) || null
             }));
 
             data.blueTeam = addImageUrl(data.blueTeam);
             data.redTeam = addImageUrl(data.redTeam);
         }
 
-        const serializeData = (obj: SerializableObject): SerializableObject => {
+        const serializeData = (obj: any): any => {
             if (!obj) return obj;
-
-            const newObj: SerializableObject = {};
-            for (const key in obj) {
-                const value = obj[key];
-                if (value && typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
-                    newObj[key] = (value as FirestoreTimestamp).toDate().toISOString();
-                } else if (Array.isArray(value)) {
-                    newObj[key] = value.map(item => 
-                        (typeof item === 'object' && item !== null) ? serializeData(item as SerializableObject) : item
-                    );
-                } else if (typeof value === 'object' && value !== null) {
-                    newObj[key] = serializeData(value as SerializableObject);
-                } else {
-                    newObj[key] = value;
+            if (obj.toDate && typeof obj.toDate === 'function') return obj.toDate().toISOString();
+            if (Array.isArray(obj)) return obj.map(serializeData);
+            if (typeof obj === 'object') {
+                const newObj: { [key: string]: any } = {};
+                for (const key in obj) {
+                    newObj[key] = serializeData(obj[key]);
                 }
+                return newObj;
             }
-            return newObj;
+            return obj;
         };
 
         const finalData = serializeData({
             matchId: doc.id,
             ...data,
-        } as SerializableObject);
+        });
 
         return NextResponse.json(finalData);
 
@@ -144,7 +128,7 @@ export async function GET(
 // PATCH: 챔피언 정보 수정을 처리하는 함수
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: Promise<{ matchId: string }> }  // Promise로 변경
+    { params }: { params: { matchId: string } }
 ) {
     try {
         const { matchId } = await params;
@@ -154,6 +138,7 @@ export async function PATCH(
             return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
         }
 
+        // 권한 확인 (총관리자 또는 관리자만 가능)
         const userSnapshot = await db.collection('users').where('email', '==', requesterEmail).limit(1).get();
         if (userSnapshot.empty) {
             return NextResponse.json({ error: '사용자 정보를 찾을 수 없습니다.' }, { status: 403 });
@@ -171,13 +156,14 @@ export async function PATCH(
 
         const matchData = doc.data();
         const teamKey = team === 'blue' ? 'blueTeam' : 'redTeam';
-        const teamData: MatchPlayer[] = matchData?.[teamKey] || [];
+        const teamData = matchData?.[teamKey] || [];
 
-        const playerIndex = teamData.findIndex((p) => p.email === playerEmail);
+        const playerIndex = teamData.findIndex((p: { email: string }) => p.email === playerEmail);
         if (playerIndex === -1) {
             return NextResponse.json({ error: '해당 플레이어를 찾을 수 없습니다.' }, { status: 404 });
         }
 
+        // 해당 플레이어의 챔피언 정보만 업데이트
         teamData[playerIndex].champion = newChampion;
 
         await matchRef.update({ [teamKey]: teamData });
@@ -194,7 +180,7 @@ export async function PATCH(
 // DELETE: 매치 기록을 삭제하는 함수 (총관리자 전용)
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: Promise<{ matchId: string }> }  // Promise로 변경
+    { params }: { params: { matchId: string } }
 ) {
     try {
         const { matchId } = await params;
@@ -204,6 +190,7 @@ export async function DELETE(
             return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
         }
 
+        // 오직 총관리자만 삭제 가능
         const hasPermission = await isSuperAdmin(requesterEmail);
         if (!hasPermission) {
             return NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 });

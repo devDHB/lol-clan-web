@@ -1,13 +1,14 @@
 'use client';
 
-import { useAuth } from '@/components/AuthProvider';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { app } from '@/firebase';
+import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import Image from 'next/image';
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { app } from '@/firebase';
 
+// --- 타입 정의 ---
 interface UserProfile {
   role: string;
 }
@@ -155,10 +156,8 @@ export default function WriteNoticePage() {
       }
       alert('공지사항이 성공적으로 작성되었습니다.');
       router.push('/notices');
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        alert(error.message);
-      }
+    } catch (error: any) {
+      alert(error.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -171,6 +170,7 @@ export default function WriteNoticePage() {
   return (
     <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
       <div className="max-w-4xl mx-auto">
+        {/* ✅ [수정] 헤더 배경 박스 제거 */}
         <div className="mb-8 flex justify-between items-center">
           <h1 className="text-3xl font-bold text-blue-400">공지사항 글쓰기</h1>
           <Link href="/notices" className="text-blue-400 hover:underline">← 목록으로 돌아가기</Link>
@@ -184,6 +184,7 @@ export default function WriteNoticePage() {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              // ✅ [수정] placeholder 제거
               className="w-full px-4 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
@@ -196,6 +197,7 @@ export default function WriteNoticePage() {
               value={content}
               onChange={(e) => setContent(e.target.value)}
               rows={15}
+              // ✅ [수정] placeholder 제거
               className="w-full px-4 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
@@ -233,6 +235,7 @@ export default function WriteNoticePage() {
           </div>
 
           <div className="flex justify-end gap-4 pt-4">
+            {/* 취소 버튼 */}
             <button
               type="button"
               onClick={() => router.push('/notices')}
@@ -243,7 +246,7 @@ export default function WriteNoticePage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full sm:w-auto py-2 px-8 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-wait"
+              className="py-2 px-8 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-wait transition-colors"
             >
               {isSubmitting ? '작성 중...' : '공지사항 작성 완료'}
             </button>

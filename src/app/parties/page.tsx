@@ -33,18 +33,6 @@ interface UserMap {
   [email: string]: string;
 }
 
-interface AuthUser {
-  email: string | null;
-}
-
-interface UpdatePartyData {
-  newPartyName?: string;
-  newRequiredTier?: string;
-  newStartTime?: string;
-  newPlayStyle?: '즐겜' | '빡겜';
-  newPositions?: string[];
-}
-
 const POSITIONS = ['ALL', 'TOP', 'JG', 'MID', 'AD', 'SUP'];
 const PARTY_TYPES = ['전체', '자유랭크', '솔로/듀오랭크', '기타'];
 
@@ -157,11 +145,11 @@ function CreatePartyModal({ isOpen, setIsOpen, handleCreateParty, initialPartyTy
 // 파티 카드
 function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpdateParty, handleDisbandParty }: {
   party: Party;
-  user: AuthUser | null;
+  user: any;
   userMap: UserMap;
   profile: UserProfile | null;
   handlePartyAction: (partyId: string, action: 'join' | 'leave' | 'join_waitlist' | 'leave_waitlist', positions?: string[]) => void;
-  handleUpdateParty: (partyId: string, action: 'update_details' | 'update_positions', data: UpdatePartyData) => void;
+  handleUpdateParty: (partyId: string, action: 'update_details' | 'update_positions', data: any) => void;
   handleDisbandParty: (partyId: string) => void;
 }) {
   const [selectedPositions, setSelectedPositions] = useState<string[]>(['ALL']);
@@ -176,12 +164,12 @@ function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpd
   const members = party.membersData as Member[];
   const waiting = party.waitingData as Member[];
   const leader = members[0];
-  const isMember = user?.email ? members.some(m => m.email === user.email) : false;
-  const isInWaitlist = user?.email ? waiting.some(w => w.email === user.email) : false;
+  const isMember = user ? members.some(m => m.email === user.email) : false;
+  const isInWaitlist = user ? waiting.some(w => w.email === user.email) : false;
   const isFull = members.length >= party.maxMembers;
   const isAdmin = profile?.role === '총관리자' || profile?.role === '관리자';
   const canModifyDetails = isAdmin || isMember;
-  const canDisband = isAdmin || (user?.email && user.email === leader.email);
+  const canDisband = isAdmin || (user && user.email === leader.email);
   const typeStyle = partyTypeStyles[party.partyType] || {};
 
   return (
@@ -261,7 +249,7 @@ function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpd
             </div>
           </div>
         )}
-        {user?.email && (
+        {user && (
           <div className="space-y-2">
             {isMember && <button onClick={() => handlePartyAction(party.partyId, 'leave')} className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 font-semibold rounded-md">파티 나가기</button>}
             {isInWaitlist && <button onClick={() => handlePartyAction(party.partyId, 'leave_waitlist')} className="w-full py-2 px-4 bg-yellow-700 hover:bg-yellow-800 font-semibold rounded-md">대기열 나가기</button>}
@@ -328,7 +316,7 @@ export default function PartiesPage() {
   }, [fetchData]);
 
   const handleCreateParty = async (partyType: '자유랭크' | '솔로/듀오랭크' | '기타', name: string, tier: string, style: '즐겜' | '빡겜', time: string) => {
-    if (!name.trim() || !user?.email) {
+    if (!name.trim() || !user || !user.email) {
       alert('파티 이름과 로그인 정보가 필요합니다.');
       return;
     }
@@ -361,7 +349,7 @@ export default function PartiesPage() {
   };
 
   const handlePartyAction = async (partyId: string, action: 'join' | 'leave' | 'join_waitlist' | 'leave_waitlist', positions: string[] = ['ALL']) => {
-    if (!user?.email) return;
+    if (!user || !user.email) return;
 
     const party = parties.find(p => p.partyId === partyId);
     if ((action === 'join' || action === 'join_waitlist') && party?.partyType !== '기타' && positions.length === 0) {
@@ -382,12 +370,12 @@ export default function PartiesPage() {
         const data = await res.json();
         throw new Error(data.error || '작업에 실패했습니다.');
       }
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof Error) alert(error.message);
     }
   };
 
-  const handleUpdateParty = async (partyId: string, action: 'update_details' | 'update_positions', data: UpdatePartyData) => {
+  const handleUpdateParty = async (partyId: string, action: 'update_details' | 'update_positions', data: any) => {
     if (!user?.email) return;
 
     const body = { partyId, userEmail: user.email, action, ...data };
@@ -403,13 +391,13 @@ export default function PartiesPage() {
         throw new Error(resData.error || '업데이트 실패');
       }
       fetchData();
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof Error) alert(error.message);
     }
   };
 
   const handleDisbandParty = async (partyId: string) => {
-    if (!user?.email) return;
+    if (!user || !user.email) return;
     if (confirm('정말로 이 파티를 해체하시겠습니까?')) {
       try {
         const res = await fetch('/api/parties', {
@@ -424,12 +412,8 @@ export default function PartiesPage() {
           const data = await res.json();
           throw new Error(data.error || '파티 해체 실패');
         }
-      } catch (error) {
-        if (error instanceof Error) {
-          alert(error.message);
-        } else {
-          alert('알 수 없는 오류가 발생했습니다.');
-        }
+      } catch (error: any) {
+        alert(error.message);
       }
     }
   };
@@ -443,7 +427,7 @@ export default function PartiesPage() {
       <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
         <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
           <h1 className="text-4xl font-bold text-blue-400">파티 찾기</h1>
-          {user?.email && (
+          {user && (
             <div className="flex flex-wrap justify-center gap-2">
               <button onClick={() => setCreateMode('자유랭크')} className="py-2 px-5 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold">+ 자유랭크</button>
               <button onClick={() => setCreateMode('솔로/듀오랭크')} className="py-2 px-5 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold">+ 솔로/듀오랭크</button>

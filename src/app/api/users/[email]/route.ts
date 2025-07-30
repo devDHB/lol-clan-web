@@ -4,7 +4,7 @@ import { db } from '@/lib/firebase-admin';
 
 export async function GET(
   _request: Request,
-  context: { params: Promise<{ email: string }> }
+  context: { params: Promise<{ email: string }> } // 타입을 Promise로 지정
 ) {
   try {
     // params를 await해서 꺼내기

@@ -1200,23 +1200,22 @@ export default function ScrimDetailPage() {
                                             <div>
                                                 <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
                                                 <div className="flex flex-wrap gap-2 mb-4">
-                                                <button
-                                                    onClick={() => handlePositionClick('ALL', true)}
-                                                    className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600'}`}
-                                                >
-                                                    ALL
-                                                </button>
-                                                <div className="w-full border-t border-gray-700 my-2"></div>
-                                                {POSITIONS.map(pos => (
                                                     <button
-                                                        key={pos} // ← key 추가
-                                                        onClick={() => handlePositionClick(pos, false)} // ← pos 사용하도록 수정
-                                                        className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === pos) ? 'bg-green-500' : 'bg-gray-600 hover:bg-gray-500'}`} // ← pos 사용하도록 수정
+                                                        onClick={() => handlePositionClick('ALL', true)}
+                                                        className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600'}`}
                                                     >
-                                                        {pos}
+                                                        ALL
                                                     </button>
-                                                ))}
-                                            </div>
+                                                    <div className="w-full border-t border-gray-700 my-2"></div>
+                                                    {POSITIONS.map(pos => (
+                                                        <button
+                                                            onClick={() => handlePositionClick('ALL', true)}
+                                                            className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600 hover:bg-gray-500'}`}
+                                                        >
+                                                            ALL
+                                                        </button>
+                                                    ))}
+                                                </div>
                                                 {selectedPositions.length > 0 && !selectedPositions.some(p => p.name === 'ALL') && (
                                                     <div className="space-y-2 mt-4">
                                                         <p className="text-sm font-medium text-gray-300">선택된 포지션 순위 지정:</p>

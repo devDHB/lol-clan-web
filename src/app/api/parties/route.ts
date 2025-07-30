@@ -8,15 +8,7 @@ interface Member {
   positions: string[];
 }
 
-interface UpdateData {
-  [key: string]: string | null | undefined;
-  partyName?: string;
-  requiredTier?: string;
-  startTime?: string | null;
-  playStyle?: '즐겜' | '빡겜';
-}
-
-interface NewPartyData {
+interface PartyData {
   partyType: string;
   partyName: string;
   maxMembers: number;
@@ -35,9 +27,7 @@ const safeParse = (data: unknown): Member[] => {
     try {
       const parsed = JSON.parse(data);
       return Array.isArray(parsed) ? parsed : [];
-    } catch (_error) { 
-      return []; 
-    }
+    } catch (e) { return []; }
   }
   return [];
 };
@@ -102,7 +92,7 @@ export async function POST(request: NextRequest) {
       default: return NextResponse.json({ error: '알 수 없는 파티 타입입니다.' }, { status: 400 });
     }
 
-    const newParty: NewPartyData = {
+    const newParty: any = {
       partyType,
       partyName,
       maxMembers,
@@ -224,7 +214,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: '파티 정보를 수정할 권한이 없습니다.' }, { status: 403 });
       }
       const { newPartyName, newRequiredTier, newStartTime, newPlayStyle } = body;
-      const updates: UpdateData = {};
+      const updates: { [key: string]: any } = {};
       if (newPartyName !== undefined) updates.partyName = newPartyName;
       if (newRequiredTier !== undefined) updates.requiredTier = newRequiredTier;
       if (newStartTime !== undefined) updates.startTime = (newStartTime && newStartTime.trim() !== '') ? newStartTime.trim() : null;
