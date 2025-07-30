@@ -65,7 +65,7 @@ async function getChampionList() {
 
 export async function GET(
     _request: NextRequest,
-    { params }: { params: { email: string } }
+    { params }: { params: Promise<{ email: string }> }
 ) {
     try {
         const resolvedParams = await params;
