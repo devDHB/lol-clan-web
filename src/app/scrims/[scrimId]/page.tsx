@@ -1209,10 +1209,11 @@ export default function ScrimDetailPage() {
                                                     <div className="w-full border-t border-gray-700 my-2"></div>
                                                     {POSITIONS.map(pos => (
                                                         <button
-                                                            onClick={() => handlePositionClick('ALL', true)}
-                                                            className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600 hover:bg-gray-500'}`}
+                                                            key={pos} // ← key 추가
+                                                            onClick={() => handlePositionClick(pos, false)} // ← pos 사용하도록 수정
+                                                            className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === pos) ? 'bg-green-500' : 'bg-gray-600 hover:bg-gray-500'}`} // ← pos 사용하도록 수정
                                                         >
-                                                            ALL
+                                                            {pos} {/* ← pos 렌더링하도록 수정 */}
                                                         </button>
                                                     ))}
                                                 </div>
