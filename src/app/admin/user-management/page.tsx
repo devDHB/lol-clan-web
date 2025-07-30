@@ -54,7 +54,6 @@ export default function UserManagementPage() {
                     if (profileData.role === '총관리자' || profileData.role === '관리자') {
                         await fetchUsers();
                     } else {
-                        // 관리자 권한이 없으면 접근 불가 처리
                         router.push('/'); 
                     }
                 } catch (error) {
@@ -64,7 +63,6 @@ export default function UserManagementPage() {
                     setLoading(false);
                 }
             } else if (user === null) {
-                // 로그아웃 상태가 확인되면 로그인 페이지로
                 router.push('/login');
             }
         };
@@ -209,7 +207,9 @@ export default function UserManagementPage() {
                                                     className="bg-gray-700 p-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                                                     disabled={!canEditRole}
                                                 >
-                                                    {profile?.role === '총관리자' && u.role === '관리자' && <option value="관리자">관리자</option>}
+                                                    {/* ✅ [수정] 역할 옵션 표시 로직 개선 */}
+                                                    {profile?.role === '총관리자' && <option value="관리자">관리자</option>}
+                                                    {u.role === '관리자' && profile?.role === '관리자' && <option value="관리자">관리자</option>}
                                                     <option value="내전관리자">내전관리자</option>
                                                     <option value="일반">일반</option>
                                                 </select>
