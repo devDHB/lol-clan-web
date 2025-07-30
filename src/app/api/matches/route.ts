@@ -20,7 +20,6 @@ export async function GET() {
         scrimId: data.scrimId,
         winningTeam: data.winningTeam,
         matchDate: data.matchDate?.toDate().toISOString() || null,
-        // ✅ 이제 match 문서에서 직접 정보를 읽어옵니다.
         scrimName: data.scrimName || '내전 경기',
         scrimType: data.scrimType || '일반',
         creatorEmail: data.creatorEmail || '정보 없음',

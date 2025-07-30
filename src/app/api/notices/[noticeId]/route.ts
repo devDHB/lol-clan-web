@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 
-// --- 오류 해결을 위한 코드 추가 ---
-// 이 라우트는 빌드 시점에 정적으로 생성되지 않고, 요청 시에 항상 동적으로 실행되도록 명시합니다.
+// 요청 시에 항상 동적으로 실행
 export const dynamic = 'force-dynamic';
 
 // GET
@@ -11,7 +10,6 @@ export async function GET(
   context: { params: Promise<{ noticeId: string }> }
 ) {
   try {
-    // 🔥 여기서 await 해서 꺼내기
     const { noticeId } = await context.params;
 
     if (!noticeId) {
@@ -76,7 +74,6 @@ export async function PATCH(
 ) {
   try {
     const { noticeId } = await context.params; // 🔥 await 필요
-    // imageUrl -> imageUrls (배열)
     const { title, content, userEmail, imageUrls } = await request.json();
 
     const noticeRef = db.collection('notices').doc(noticeId);
@@ -90,7 +87,6 @@ export async function PATCH(
       return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 });
     }
 
-    // imageUrl -> imageUrls
     await noticeRef.update({ title, content, imageUrls });
     return NextResponse.json({ message: '공지사항이 성공적으로 수정되었습니다.' });
   } catch (error) {

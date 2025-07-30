@@ -1,21 +1,21 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
 
 // 권한 확인 헬퍼 함수
 async function checkScrimCreationPermission(email: string): Promise<boolean> {
   if (!email) return false;
-  
+
   const usersCollection = db.collection('users');
   const userSnapshot = await usersCollection.where('email', '==', email).limit(1).get();
-  
+
   if (userSnapshot.empty) return false;
 
   const userData = userSnapshot.docs[0].data();
   const userRole = userData.role;
 
-  // 총관리자 또는 관리자는 항상 생성 가능
-  if (userRole === '총관리자' || userRole === '관리자') {
+  // 총관리자, 관리자, 내전관리자는 항상 생성 가능
+  if (userRole === '총관리자' || userRole === '관리자' || userRole === '내전관리자') {
     return true;
   }
 
@@ -24,7 +24,7 @@ async function checkScrimCreationPermission(email: string): Promise<boolean> {
   if (totalScrimsPlayed >= 15) {
     return true;
   }
-  
+
   return false;
 }
 

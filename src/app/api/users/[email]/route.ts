@@ -7,7 +7,7 @@ export async function GET(
   context: { params: Promise<{ email: string }> } // 타입을 Promise로 지정
 ) {
   try {
-    // ✅ params를 await해서 꺼내기
+    // params를 await해서 꺼내기
     const { email } = await context.params;
 
     if (!email) {
@@ -44,7 +44,7 @@ export async function POST(
   context: { params: Promise<{ email: string }> }
 ) {
   try {
-    const { email } = await context.params; // ✅ await 추가
+    const { email } = await context.params;
 
     const { nickname } = await request.json();
     const trimmedNickname = nickname.trim();

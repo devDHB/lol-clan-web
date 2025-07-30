@@ -4,6 +4,7 @@ import { useEffect, useState, Dispatch, SetStateAction, useCallback, Fragment } 
 import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { Transition, Dialog } from '@headlessui/react';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
 // --- 타입 정의 ---
 interface Member {
@@ -422,55 +423,57 @@ export default function PartiesPage() {
   if (loading) return <main className="flex justify-center items-center min-h-screen bg-gray-900 text-white">파티 목록을 불러오는 중...</main>;
 
   return (
-    <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
-        <h1 className="text-4xl font-bold text-blue-400">파티 찾기</h1>
-        {user && (
-          <div className="flex flex-wrap justify-center gap-2">
-            <button onClick={() => setCreateMode('자유랭크')} className="py-2 px-5 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold">+ 자유랭크</button>
-            <button onClick={() => setCreateMode('솔로/듀오랭크')} className="py-2 px-5 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold">+ 솔로/듀오랭크</button>
-            <button onClick={() => setCreateMode('기타')} className="py-2 px-5 bg-teal-600 hover:bg-teal-700 rounded-md font-semibold">+ 기타</button>
-          </div>
+    <ProtectedRoute>
+      <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
+          <h1 className="text-4xl font-bold text-blue-400">파티 찾기</h1>
+          {user && (
+            <div className="flex flex-wrap justify-center gap-2">
+              <button onClick={() => setCreateMode('자유랭크')} className="py-2 px-5 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold">+ 자유랭크</button>
+              <button onClick={() => setCreateMode('솔로/듀오랭크')} className="py-2 px-5 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold">+ 솔로/듀오랭크</button>
+              <button onClick={() => setCreateMode('기타')} className="py-2 px-5 bg-teal-600 hover:bg-teal-700 rounded-md font-semibold">+ 기타</button>
+            </div>
+          )}
+        </div>
+
+        {createMode && (
+          <CreatePartyModal
+            isOpen={createMode !== null}
+            setIsOpen={() => setCreateMode(null)}
+            handleCreateParty={handleCreateParty}
+            initialPartyType={createMode}
+          />
         )}
-      </div>
 
-      {createMode && (
-        <CreatePartyModal
-          isOpen={createMode !== null}
-          setIsOpen={() => setCreateMode(null)}
-          handleCreateParty={handleCreateParty}
-          initialPartyType={createMode}
-        />
-      )}
+        <div className="mb-6 flex justify-center gap-2">
+          {PARTY_TYPES.map(type => (
+            <button key={type} onClick={() => setFilter(type)} className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${filter === type ? activeFilterStyles[type] : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+              {type}
+            </button>
+          ))}
+        </div>
 
-      <div className="mb-6 flex justify-center gap-2">
-        {PARTY_TYPES.map(type => (
-          <button key={type} onClick={() => setFilter(type)} className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${filter === type ? activeFilterStyles[type] : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
-            {type}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredParties.length > 0 ? (
-          filteredParties.map((party) => (
-            <PartyCard
-              key={party.partyId}
-              party={party}
-              user={user}
-              userMap={userMap}
-              profile={profile}
-              handlePartyAction={handlePartyAction}
-              handleUpdateParty={handleUpdateParty}
-              handleDisbandParty={handleDisbandParty}
-            />
-          ))
-        ) : (
-          <div className="col-span-full p-10 text-center text-gray-400 bg-gray-800 rounded-lg">
-            <p>현재 모집 중인 파티가 없습니다.</p>
-          </div>
-        )}
-      </div>
-    </main>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredParties.length > 0 ? (
+            filteredParties.map((party) => (
+              <PartyCard
+                key={party.partyId}
+                party={party}
+                user={user}
+                userMap={userMap}
+                profile={profile}
+                handlePartyAction={handlePartyAction}
+                handleUpdateParty={handleUpdateParty}
+                handleDisbandParty={handleDisbandParty}
+              />
+            ))
+          ) : (
+            <div className="col-span-full p-10 text-center text-gray-400 bg-gray-800 rounded-lg">
+              <p>현재 모집 중인 파티가 없습니다.</p>
+            </div>
+          )}
+        </div>
+      </main>
+    </ProtectedRoute>
   );
 }

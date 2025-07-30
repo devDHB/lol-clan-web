@@ -75,20 +75,13 @@ export async function GET(
             return NextResponse.json({ error: '사용자 이메일이 필요합니다.' }, { status: 400 });
         }
 
-        // 1. 데이터 가져오기
-        const [matchesSnapshot, usersSnapshot, allChampions] = await Promise.all([
+        const [matchesSnapshot, allChampions] = await Promise.all([
             db.collection('matches').orderBy('matchDate', 'desc').get(),
-            db.collection('users').get(),
             getChampionList(),
         ]);
 
-        // 2. 데이터 가공
-        const usersMap = new Map<string, string>();
-        usersSnapshot.forEach(doc => usersMap.set(doc.data().email, doc.data().nickname));
-
         const championInfoMap = new Map(allChampions.map(c => [c.name, { id: c.id, imageUrl: c.imageUrl }]));
 
-        // 3. 통계 객체 초기화
         const stats: UserStats = {
             totalGames: 0,
             totalWins: 0,
@@ -104,27 +97,28 @@ export async function GET(
 
         const userNonAramMatches: any[] = [];
 
-        // 4. matches 컬렉션을 기준으로 순회
         matchesSnapshot.forEach(doc => {
             const match = doc.data();
             const blueTeam: MatchPlayer[] = match.blueTeam || [];
             const redTeam: MatchPlayer[] = match.redTeam || [];
 
-            const player = blueTeam.find(p => p.email === userEmail) || redTeam.find(p => p.email === userEmail);
-            if (!player) return;
+            const playerInBlue = blueTeam.find(p => p.email === userEmail);
+            const playerInRed = redTeam.find(p => p.email === userEmail);
 
-            const playerTeamColor = blueTeam.some(p => p.email === userEmail) ? 'blue' : 'red';
-            const didWin = match.winningTeam === playerTeamColor;
+            if (!playerInBlue && !playerInRed) return;
+
+            const playerInfo = playerInBlue || playerInRed;
+            const didWin = match.winningTeam === (playerInBlue ? 'blue' : 'red');
 
             if (match.scrimType === '칼바람') {
                 stats.aramGames++;
                 if (didWin) stats.aramWins++;
             } else {
-                userNonAramMatches.push({ ...match, matchId: doc.id, playerInfo: player, didWin });
+                const opponentTeam = playerInBlue ? redTeam : blueTeam;
+                userNonAramMatches.push({ ...match, matchId: doc.id, playerInfo, didWin, opponentTeam });
             }
         });
 
-        // 5. 일반/피어리스 경기 통계 계산
         userNonAramMatches.forEach(match => {
             stats.totalGames++;
             if (match.didWin) stats.totalWins++;
@@ -140,12 +134,13 @@ export async function GET(
                 if (match.didWin) stats.positions[position as keyof typeof stats.positions].wins++;
                 else stats.positions[position as keyof typeof stats.positions].losses++;
 
-                const opponentTeam = match.playerInfo.team === 'blue' ? match.redTeam : match.blueTeam;
-                const opponentInfo = opponentTeam.find((p: any) => p.assignedPosition === position);
+                const opponentInfo = match.opponentTeam.find((p: any) => p.assignedPosition === position);
 
                 if (opponentInfo) {
                     const opponentEmail = opponentInfo.email;
-                    const opponentNickname = usersMap.get(opponentEmail) || '알 수 없음';
+                    // usersMap 대신 경기 기록에 저장된 닉네임을 직접 사용
+                    const opponentNickname = opponentInfo.nickname || '알 수 없음';
+
                     if (!stats.matchups[position]) stats.matchups[position] = {};
                     if (!stats.matchups[position][opponentEmail]) {
                         stats.matchups[position][opponentEmail] = { nickname: opponentNickname, wins: 0, losses: 0 };
@@ -156,7 +151,6 @@ export async function GET(
             }
         });
 
-        // ✅ [수정] 최근 10경기 정보 추출
         stats.recentGames = userNonAramMatches.slice(0, 10).map(match => {
             const championName = match.playerInfo.champion;
             const champInfo = championInfoMap.get(championName);

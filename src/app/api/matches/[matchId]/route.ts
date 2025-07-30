@@ -54,7 +54,14 @@ async function checkAdminPermission(email: string): Promise<boolean> {
     }
 }
 
-
+// --- 공통 함수: 총관리자 권한 확인 ---
+async function isSuperAdmin(email: string): Promise<boolean> {
+    if (!email) return false;
+    const usersCollection = db.collection('users');
+    const snapshot = await usersCollection.where('email', '==', email).limit(1).get();
+    if (snapshot.empty) return false;
+    return snapshot.docs[0].data().role === '총관리자';
+}
 
 // --- API 핸들러: GET (매치 상세 정보 조회) ---
 export async function GET(
@@ -116,7 +123,9 @@ export async function GET(
     }
 }
 
-// --- API 핸들러: PATCH (매치 정보 수정) ---
+
+
+// PATCH: 챔피언 정보 수정을 처리하는 함수
 export async function PATCH(
     request: NextRequest,
     { params }: { params: { matchId: string } }
@@ -129,8 +138,13 @@ export async function PATCH(
             return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
         }
 
-        const hasPermission = await checkAdminPermission(requesterEmail);
-        if (!hasPermission) {
+        // 권한 확인 (총관리자 또는 관리자만 가능)
+        const userSnapshot = await db.collection('users').where('email', '==', requesterEmail).limit(1).get();
+        if (userSnapshot.empty) {
+            return NextResponse.json({ error: '사용자 정보를 찾을 수 없습니다.' }, { status: 403 });
+        }
+        const userRole = userSnapshot.docs[0].data().role;
+        if (userRole !== '총관리자' && userRole !== '관리자') {
             return NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 });
         }
 
@@ -149,6 +163,7 @@ export async function PATCH(
             return NextResponse.json({ error: '해당 플레이어를 찾을 수 없습니다.' }, { status: 404 });
         }
 
+        // 해당 플레이어의 챔피언 정보만 업데이트
         teamData[playerIndex].champion = newChampion;
 
         await matchRef.update({ [teamKey]: teamData });
@@ -158,5 +173,41 @@ export async function PATCH(
     } catch (error) {
         console.error('PATCH Match API Error:', error);
         return NextResponse.json({ error: '챔피언 정보 수정에 실패했습니다.' }, { status: 500 });
+    }
+}
+
+
+// DELETE: 매치 기록을 삭제하는 함수 (총관리자 전용)
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: { matchId: string } }
+) {
+    try {
+        const { matchId } = await params;
+        const { requesterEmail } = await request.json();
+
+        if (!matchId || !requesterEmail) {
+            return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
+        }
+
+        // 오직 총관리자만 삭제 가능
+        const hasPermission = await isSuperAdmin(requesterEmail);
+        if (!hasPermission) {
+            return NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 });
+        }
+
+        const matchRef = db.collection('matches').doc(matchId);
+        const doc = await matchRef.get();
+        if (!doc.exists) {
+            return NextResponse.json({ error: '삭제할 매치를 찾을 수 없습니다.' }, { status: 404 });
+        }
+
+        await matchRef.delete();
+
+        return NextResponse.json({ message: '매치 기록이 성공적으로 삭제되었습니다.' });
+
+    } catch (error) {
+        console.error('DELETE Match API Error:', error);
+        return NextResponse.json({ error: '매치 기록 삭제에 실패했습니다.' }, { status: 500 });
     }
 }

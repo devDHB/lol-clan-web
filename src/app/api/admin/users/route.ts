@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
 
@@ -49,16 +49,14 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: '총관리자 역할은 부여할 수 없습니다.' }, { status: 403 });
         }
 
-        // --- 닉네임 중복 확인 로직 추가 ---
         const usersCollection = db.collection('users');
         const nicknameSnapshot = await usersCollection.where('nickname', '==', nickname.trim()).get();
         if (!nicknameSnapshot.empty) {
             return NextResponse.json({ error: '이미 사용 중인 닉네임입니다.' }, { status: 409 });
         }
-        // --- 로직 추가 끝 ---
 
         const userRecord = await admin.auth().createUser({ email, password });
-        await usersCollection.add({
+        await usersCollection.doc(userRecord.uid).set({ // UID를 문서 ID로 사용
             email: userRecord.email,
             nickname: nickname.trim(),
             role,
@@ -71,19 +69,51 @@ export async function POST(request: Request) {
     }
 }
 
-// PUT: 사용자 역할 수정 (총관리자만)
+// PUT: 사용자 역할 수정
 export async function PUT(request: Request) {
     try {
         const { userId, newRole, requesterEmail } = await request.json();
-        if (!requesterEmail || !(await isSuperAdmin(requesterEmail))) {
-            return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
-        }
-        if (newRole === '총관리자') {
-            return NextResponse.json({ error: '총관리자 역할은 부여할 수 없습니다.' }, { status: 403 });
+
+        if (!userId || !newRole || !requesterEmail) {
+            return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
         }
 
-        await db.collection('users').doc(userId).update({ role: newRole });
+        const usersCollection = db.collection('users');
+        const requesterSnapshot = await usersCollection.where('email', '==', requesterEmail).limit(1).get();
+        if (requesterSnapshot.empty) {
+            return NextResponse.json({ error: '요청자 정보를 찾을 수 없습니다.' }, { status: 403 });
+        }
+        const requesterRole = requesterSnapshot.docs[0].data().role;
+
+        const targetUserRef = usersCollection.doc(userId);
+        const targetUserDoc = await targetUserRef.get();
+        if (!targetUserDoc.exists) {
+            return NextResponse.json({ error: '대상 사용자를 찾을 수 없습니다.' }, { status: 404 });
+        }
+        const targetUserRole = targetUserDoc.data()?.role;
+
+        // 권한 검증 로직
+        if (requesterRole === '총관리자') {
+            if (targetUserRole === '총관리자') {
+                return NextResponse.json({ error: '총관리자의 역할은 변경할 수 없습니다.' }, { status: 403 });
+            }
+            if (newRole === '총관리자') {
+                return NextResponse.json({ error: '총관리자 역할은 부여할 수 없습니다.' }, { status: 403 });
+            }
+        } else if (requesterRole === '관리자') {
+            if (targetUserRole === '총관리자' || targetUserRole === '관리자') {
+                return NextResponse.json({ error: '자신과 같거나 더 높은 등급의 역할은 수정할 수 없습니다.' }, { status: 403 });
+            }
+            if (newRole === '총관리자' || newRole === '관리자') {
+                return NextResponse.json({ error: '관리자 역할 이상을 부여할 수 없습니다.' }, { status: 403 });
+            }
+        } else {
+            return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
+        }
+
+        await targetUserRef.update({ role: newRole });
         return NextResponse.json({ message: '사용자 역할이 성공적으로 수정되었습니다.' });
+
     } catch (error) {
         console.error('Admin PUT User Error:', error);
         return NextResponse.json({ error: '사용자 역할 수정에 실패했습니다.' }, { status: 500 });
@@ -98,7 +128,6 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
         }
 
-        // 닉네임 중복 확인
         const usersCollection = db.collection('users');
         const nicknameSnapshot = await usersCollection.where('nickname', '==', newNickname.trim()).get();
         if (!nicknameSnapshot.empty && nicknameSnapshot.docs[0].id !== userId) {

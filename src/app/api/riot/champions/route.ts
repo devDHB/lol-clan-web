@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 interface ChampionData {
     id: string;
     name: string;
-    imageUrl: string; // 👈 [추가]
+    imageUrl: string;
 }
 
 let championList: ChampionData[] = [];
@@ -24,7 +24,6 @@ async function fetchChampionList() {
         championList = Object.keys(champions).map(key => ({
             id: champions[key].id,
             name: champions[key].name,
-            // 👈 [추가]
             imageUrl: `http://ddragon.leagueoflegends.com/cdn/${latestVersion}/img/champion/${champions[key].id}.png`
         }));
         lastFetched = Date.now();
@@ -45,7 +44,7 @@ export async function GET(request: Request) {
         return NextResponse.json(championList);
     }
 
-    const filteredChampions = championList.filter(champion => 
+    const filteredChampions = championList.filter(champion =>
         champion.name.toLowerCase().includes(query)
     );
 

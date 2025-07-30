@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
 
-// GET: 모든 공지사항 목록을 가져오는 함수 (닉네임, 내용 포함하도록 수정)
+// GET: 모든 공지사항 목록을 가져오는 함수
 export async function GET() {
   try {
     const usersSnapshot = await db.collection('users').get();
@@ -43,7 +43,7 @@ export async function GET() {
   }
 }
 
-// POST: 새로운 공지사항을 작성하는 함수 (이전과 동일)
+// POST: 새로운 공지사항을 작성하는 함수 
 export async function POST(request: Request) {
   try {
     const { title, content, authorEmail, imageUrls } = await request.json();

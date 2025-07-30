@@ -6,6 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import Link from 'next/link';
 import { DndContext, useDraggable, useDroppable, closestCenter, DragEndEvent } from '@dnd-kit/core';
 import Image from 'next/image';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
 // --- 타입 정의 ---
 interface Applicant {
@@ -104,7 +105,7 @@ function ChampionSearchInput({
 
     useEffect(() => {
         const delayDebounceFn = setTimeout(async () => {
-            // ⭐️ [수정된 부분] '미입력'이 아닐 때만 요청하도록 조건 추가 ⭐️
+            // '미입력'이 아닐 때만 요청하도록 조건
             if (searchTerm.trim().length > 0 && searchTerm.trim() !== '미입력') {
                 setLoadingResults(true);
                 try {
@@ -137,7 +138,7 @@ function ChampionSearchInput({
     }, [value]);
 
     const handleSelectChampion = (champion: ChampionInfo) => {
-        // 👈 3. 선택 시 한번 더 체크 (선택 사항이지만 안전함)
+        // 선택 시 한번 더 체크
         if (disabledChampions?.has(champion.name)) {
             alert('이미 사용된 챔피언입니다.');
             return;
@@ -261,20 +262,6 @@ function TeamColumn({ id, title, players, color = 'gray', scrimType }: { // scri
             </div>
         </div>
     );
-    // return (
-    //     <div ref={setNodeRef} className={`bg-gray-800 p-4 rounded-lg w-full border-2 ${isOver ? 'border-green-500' : borderColor}`}>
-    //         <h3 className={`text-xl font-bold mb-4 text-center text-white`}>{title} ({players.length})</h3>
-    //         <div className="space-y-2 min-h-[300px]">
-    //             {id === 'applicants' ? (
-    //                 players.map(player => (
-    //                     <PlayerCard key={`applicant-${player.email}`} player={player} scrimType={scrimType} /> // scrimType 전달
-    //                 ))
-    //             ) : (
-    //                 null
-    //             )}
-    //         </div>
-    //     </div>
-    // );
 }
 
 export default function ScrimDetailPage() {
@@ -312,7 +299,7 @@ export default function ScrimDetailPage() {
             return new Set<string>();
         }
 
-        // ✅ [수정] 영구 전적이 아닌, '임시 금지 목록'인 fearlessUsedChampions를 참조합니다.
+        // 영구 전적이 아닌, '임시 금지 목록'인 fearlessUsedChampions를 참조
         const fearlessBans = scrim.fearlessUsedChampions || [];
 
         // 현재 경기에서 실시간으로 선택 중인 챔피언 목록
@@ -414,7 +401,7 @@ export default function ScrimDetailPage() {
         }
     }, [scrim]);
 
-    // ✅ [추가] 팀을 랜덤으로 섞는 함수
+    // 팀을 랜덤으로 섞는 함수
     const handleRandomizeTeams = () => {
         if (!confirm('현재 팀을 랜덤으로 재구성하시겠습니까?')) return;
 
@@ -445,7 +432,7 @@ export default function ScrimDetailPage() {
 
         setBlueTeamSlots(newBlueTeamSlots);
         setRedTeamSlots(newRedTeamSlots);
-        setApplicants([]); // 모든 플레이어가 팀에 배정되었으므로 참가자 목록은 비웁니다.
+        setApplicants([]); // 모든 플레이어가 팀에 배정되었으므로 참가자 목록은 비움
     };
 
 
@@ -512,6 +499,11 @@ export default function ScrimDetailPage() {
 
             // --- 경기 종료 처리 (assignedPosition 포함하도록 수정) ---
             else if (action === 'end_game') {
+                // 승리팀 확정 시 확인 창 추가
+                if (!confirm(`${payload.winningTeam === 'blue' ? '블루팀' : '레드팀'}의 승리를 확정하시겠습니까?`)) {
+                    return;
+                }
+
                 if (scrim?.scrimType !== '칼바람') {
                     const allPlayers = [...Object.values(blueTeamSlots), ...Object.values(redTeamSlots)].filter(Boolean);
 
@@ -541,13 +533,11 @@ export default function ScrimDetailPage() {
                 body.championData = {
                     blueTeam: Object.keys(blueTeamSlots).filter(pos => blueTeamSlots[pos]).map(pos => ({
                         ...blueTeamSlots[pos]!,
-                        // 🔽 [변경] '미입력' 대신 빈 문자열 '' 사용 🔽
                         champion: championSelections[blueTeamSlots[pos]!.email] || '',
                         assignedPosition: pos,
                     })),
                     redTeam: Object.keys(redTeamSlots).filter(pos => redTeamSlots[pos]).map(pos => ({
                         ...redTeamSlots[pos]!,
-                        // 🔽 [변경] '미입력' 대신 빈 문자열 '' 사용 🔽
                         champion: championSelections[redTeamSlots[pos]!.email] || '',
                         assignedPosition: pos,
                     })),
@@ -634,65 +624,6 @@ export default function ScrimDetailPage() {
         }
     };
 
-    // const handleDragEnd = (event: DragEndEvent) => {
-    //     const { active, over } = event;
-    //     if (!over) return;
-
-    //     const draggedPlayer = active.data.current as Applicant;
-    //     const destinationId = over.id.toString();
-
-    //     setApplicants(prev => prev.filter(p => p.email !== draggedPlayer.email));
-    //     setBlueTeamSlots(prev => {
-    //         const newTeam = { ...prev };
-    //         for (const pos of POSITIONS) {
-    //             if (newTeam[pos]?.email === draggedPlayer.email) {
-    //                 newTeam[pos] = null;
-    //                 break;
-    //             }
-    //         }
-    //         return newTeam;
-    //     });
-    //     setRedTeamSlots(prev => {
-    //         const newTeam = { ...prev };
-    //         for (const pos of POSITIONS) {
-    //             if (newTeam[pos]?.email === draggedPlayer.email) {
-    //                 newTeam[pos] = null;
-    //                 break;
-    //             }
-    //         }
-    //         return newTeam;
-    //     });
-
-    //     if (destinationId === 'applicants') {
-    //         setApplicants(prev => {
-    //             if (prev.some(p => p.email === draggedPlayer.email)) return prev;
-    //             return [...prev, draggedPlayer];
-    //         });
-    //     } else if (destinationId.includes('-')) {
-    //         const [destinationTeamId, destinationPositionName] = destinationId.split('-');
-
-    //         const targetSetState = destinationTeamId === 'blueTeam' ? setBlueTeamSlots : setRedTeamSlots;
-    //         targetSetState(prev => {
-    //             const newTeam = { ...prev };
-    //             const existingPlayerInSlot = newTeam[destinationPositionName];
-
-    //             newTeam[destinationPositionName] = draggedPlayer;
-
-    //             if (existingPlayerInSlot) {
-    //                 // 참가자 목록에 추가하기 전에 중복 확인
-    //                 setApplicants(oldApplicants => {
-    //                     // 이미 목록에 있으면 추가하지 않고 그대로 반환
-    //                     if (oldApplicants.some(p => p.email === existingPlayerInSlot.email)) {
-    //                         return oldApplicants;
-    //                     }
-    //                     // 목록에 없으면 추가
-    //                     return [...oldApplicants, existingPlayerInSlot];
-    //                 });
-    //             }
-    //             return newTeam;
-    //         });
-    //     }
-    // };
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over || !scrim) return;
@@ -770,11 +701,6 @@ export default function ScrimDetailPage() {
         });
     };
 
-    const handleSaveTeams = async () => {
-        // 이 함수는 현재 사용되지 않습니다. (start_game 액션에서 팀을 저장함)
-        // 필요하다면 다시 활성화할 수 있습니다.
-    };
-
     const handlePositionClick = (posName: string, isWaitlist: boolean) => {
         const setState = isWaitlist ? setWaitlistSelectedPositions : setSelectedPositions;
         setState(prev => {
@@ -844,7 +770,7 @@ export default function ScrimDetailPage() {
     }
 
     const isCreator = user?.email === scrim.creatorEmail;
-    const isAdmin = profile?.role === '총관리자' || profile?.role === '관리자';
+    const isAdmin = profile?.role === '총관리자' || profile?.role === '관리자' || profile?.role === '내전관리자';
     const canManage = isAdmin || isCreator;
     const creatorNickname = userMap[scrim.creatorEmail] || scrim.creatorEmail.split('@')[0];
 
@@ -858,626 +784,424 @@ export default function ScrimDetailPage() {
     const typeStyle = scrimTypeColors[scrim.scrimType] || 'bg-gray-600';
 
     return (
-        <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
-            <div className="mb-6">
-                <Link href="/scrims" className="text-blue-400 hover:underline">← 내전 로비로 돌아가기</Link>
-                {canManage && scrim.status !== '종료' && (
-                    <button
-                        onClick={handleDisbandScrim}
-                        className="py-1 px-3 ml-3 bg-red-800 hover:bg-red-700 text-white font-semibold rounded-md text-sm"
-                    >
-                        내전 해체
-                    </button>
-                )}
-            </div>
-
-            <header className="text-center mb-8">
-                {isEditingTitle && canManage ? (
-                    <div className="flex items-center justify-center gap-2">
-                        <input
-                            type="text"
-                            value={newScrimName}
-                            onChange={(e) => setNewScrimName(e.target.value)}
-                            className="text-4xl font-bold text-yellow-400 bg-gray-700 rounded-md px-2 py-1 text-center"
-                        />
-                        <button onClick={handleUpdateScrimName} className="bg-green-600 px-3 py-1 rounded-md text-sm">저장</button>
-                        <button onClick={() => setIsEditingTitle(false)} className="bg-gray-600 px-3 py-1 rounded-md text-sm">취소</button>
-                    </div>
-                ) : (
-                    <div className="flex items-center justify-center gap-4">
-                        <h1 className="text-4xl font-bold text-yellow-400">{scrim.scrimName}</h1>
-                        {canManage && scrim.status !== '종료' && (
-                            <button
-                                onClick={() => {
-                                    setIsEditingTitle(true);
-                                    setNewScrimName(scrim.scrimName);
-                                }}
-                                className="text-xs bg-gray-600 p-2 rounded-md hover:bg-gray-500"
-                                title="내전 제목 수정"
-                            >
-                                ✏️
-                            </button>
-                        )}
-                    </div>
-                )}
-                <p className="text-lg text-gray-400 mt-2">
-                    상태: <span className="font-semibold text-green-400">{scrim.status}</span>
-                    <span className={`ml-3 px-2 py-0.5 text-xs font-semibold rounded-full border ${typeStyle}`}>
-                        {scrim.scrimType}
-                    </span>
-                </p>
-                <p className="text-sm text-gray-500 mt-1">주최자: {creatorNickname}</p>
-            </header>
-
-            {canManage && scrim.status === '모집중' && (
-                <div className="mb-8 p-4 bg-yellow-900/50 border border-yellow-700 rounded-lg text-center">
-                    <p className="mb-2">관리자/생성자 전용</p>
-                    <button
-                        onClick={() => handleScrimAction('start_team_building')}
-                        disabled={currentApplicantsForDisplay.length < 10}
-                        className="py-2 px-6 bg-yellow-600 hover:bg-yellow-700 rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
-                    >
-                        {currentApplicantsForDisplay.length < 10 ? `팀 구성을 위해 ${10 - currentApplicantsForDisplay.length}명이 더 필요합니다` : '팀 구성 시작하기'}
-                    </button>
-                    {/* ✅ [추가] 테스트 참가자 채우기 버튼 */}
-                    <button
-                        onClick={() => {
-                            if (confirm('참가자 목록을 10명의 테스트 유저로 채웁니다. 기존 참가자는 모두 사라집니다.')) {
-                                handleScrimAction('add_dummy_applicants');
-                            }
-                        }}
-                        className="py-2 px-6 bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold"
-                    >
-                        테스트 참가자 채우기
-                    </button>
-                </div>
-            )}
-
-            {scrim.status === '팀 구성중' && canManage && (
-                <>
-                    <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                            <TeamColumn id="applicants" title="남은 참가자" players={applicants} scrimType={scrim.scrimType} />
-
-                            {/* ✅ [수정] 칼바람 모드일 때와 아닐 때 UI를 분리합니다. */}
-                            {scrim.scrimType === '칼바람' ? (
-                                <>
-                                    <TeamColumn id="blueTeam" title="블루팀" players={Object.values(blueTeamSlots).filter(Boolean) as Applicant[]} color="blue" scrimType={scrim.scrimType} />
-                                    <TeamColumn id="redTeam" title="레드팀" players={Object.values(redTeamSlots).filter(Boolean) as Applicant[]} color="red" scrimType={scrim.scrimType} />
-                                </>
-                            ) : (
-                                <>
-                                    <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-blue-500">
-                                        <h3 className={`text-xl font-bold mb-4 text-center text-white`}>블루팀 ({Object.values(blueTeamSlots).filter(p => p !== null).length})</h3>
-                                        <div className="space-y-2 min-h-[300px]">
-                                            {POSITIONS.map(pos => (
-                                                <PositionSlot
-                                                    key={`blueTeam-${pos}`}
-                                                    id={`blueTeam-${pos}`}
-                                                    positionName={pos}
-                                                    player={blueTeamSlots[pos]}
-                                                    teamId="blueTeam"
-                                                    onRemovePlayer={handleRemovePlayerFromSlot}
-                                                    scrimType={scrim.scrimType}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-red-500">
-                                        <h3 className={`text-xl font-bold mb-4 text-center text-white`}>레드팀 ({Object.values(redTeamSlots).filter(p => p !== null).length})</h3>
-                                        <div className="space-y-2 min-h-[300px]">
-                                            {POSITIONS.map(pos => (
-                                                <PositionSlot
-                                                    key={`redTeam-${pos}`}
-                                                    id={`redTeam-${pos}`}
-                                                    positionName={pos}
-                                                    player={redTeamSlots[pos]}
-                                                    teamId="redTeam"
-                                                    onRemovePlayer={handleRemovePlayerFromSlot}
-                                                    scrimType={scrim.scrimType}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </DndContext>
-                    {/* <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                            <TeamColumn id="applicants" title="남은 참가자" players={applicants} scrimType={scrim.scrimType} />
-                            <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-blue-500">
-                                <h3 className={`text-xl font-bold mb-4 text-center text-white`}>블루팀 ({Object.values(blueTeamSlots).filter(p => p !== null).length})</h3>
-                                <div className="space-y-2 min-h-[300px]">
-                                    {scrim.scrimType === '칼바람' ? (
-                                        // 칼바람 모드: 포지션 없이 플레이어 카드만 렌더링
-                                        scrim.blueTeam.map(player => (
-                                            <PlayerCard key={player.email} player={player} scrimType={scrim.scrimType} />
-                                        ))
-                                    ) : (
-                                        // 일반/피어리스 모드: 포지션 슬롯 렌더링
-                                        POSITIONS.map(pos => (
-                                            <PositionSlot
-                                                key={`blueTeam-${pos}`}
-                                                id={`blueTeam-${pos}`}
-                                                positionName={pos}
-                                                player={blueTeamSlots[pos]}
-                                                teamId="blueTeam"
-                                                onRemovePlayer={handleRemovePlayerFromSlot}
-                                                scrimType={scrim.scrimType}
-                                            />
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                            <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-red-500">
-                                <h3 className={`text-xl font-bold mb-4 text-center text-white`}>레드팀 ({Object.values(redTeamSlots).filter(p => p !== null).length})</h3>
-                                <div className="space-y-2 min-h-[300px]">
-                                    {scrim.scrimType === '칼바람' ? (
-                                        // 칼바람 모드: 포지션 없이 플레이어 카드만 렌더링
-                                        scrim.redTeam.map(player => (
-                                            <PlayerCard key={player.email} player={player} scrimType={scrim.scrimType} />
-                                        ))
-                                    ) : (
-                                        // 일반/피어리스 모드: 포지션 슬롯 렌더링
-                                        POSITIONS.map(pos => (
-                                            <PositionSlot
-                                                key={`redTeam-${pos}`}
-                                                id={`redTeam-${pos}`}
-                                                positionName={pos}
-                                                player={redTeamSlots[pos]}
-                                                teamId="redTeam"
-                                                onRemovePlayer={handleRemovePlayerFromSlot}
-                                                scrimType={scrim.scrimType}
-                                            />
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </DndContext> */}
-                    <div className="text-center space-x-4 mt-6">
-                        <button onClick={() => handleScrimAction('start_game')} className="py-2 px-8 bg-green-600 hover:bg-green-700 rounded-md font-semibold">경기 시작</button>
-                        {/* ✅ [추가] 랜덤 팀 구성 버튼 */}
+        <ProtectedRoute>
+            <main className="container mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
+                <div className="mb-6">
+                    <Link href="/scrims" className="text-blue-400 hover:underline">← 내전 로비로 돌아가기</Link>
+                    {canManage && scrim.status !== '종료' && (
                         <button
-                            onClick={handleRandomizeTeams}
-                            className="py-2 px-8 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold"
+                            onClick={handleDisbandScrim}
+                            className="py-1 px-3 ml-3 bg-red-800 hover:bg-red-700 text-white font-semibold rounded-md text-sm"
                         >
-                            랜덤 팀
+                            내전 해체
                         </button>
-                        <button
-                            onClick={() => handleScrimAction('reset_to_recruiting')}
-                            className="py-2 px-8 bg-gray-600 hover:bg-gray-700 rounded-md font-semibold"
-                        >
-                            모집중 상태로 되돌리기
-                        </button>
-                        {/* ✅ [추가] '팀 구성중'일 때만 보이는 팀 초기화 버튼 */}
-                        <button
-                            onClick={() => {
-                                if (confirm('모든 선수를 참가자 목록으로 되돌리고 팀을 초기화하시겠습니까?')) {
-                                    handleScrimAction('reset_teams_and_move_to_applicants');
-                                }
-                            }}
-                            className="py-2 px-8 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold"
-                        >
-                            팀 초기화
-                        </button>
-                    </div>
-                    {/* ==================== 대기열 섹션 시작 ==================== */}
-                    <div className="mt-8 pt-6 border-t border-gray-700">
-                        <h3 className="text-2xl font-bold mb-4 text-center text-yellow-400">
-                            대기자 목록 ({waitlist.length} / 10)
-                        </h3>
-
-                        {/* 대기자 신청/취소 버튼 및 폼 */}
-                        {user && !isApplicant && (
-                            <div className="text-center mb-6 max-w-sm mx-auto">
-                                {isInWaitlist ? (
-                                    <button
-                                        onClick={() => handleScrimAction('leave_waitlist')}
-                                        className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
-                                    >
-                                        대기열 나가기
-                                    </button>
-                                ) : showWaitlistForm ? (
-                                    <div className="p-4 bg-gray-700 rounded-lg text-left space-y-4">
-                                        <h4 className="font-bold text-center">대기열 참가 신청</h4>
-
-                                        {/* --- 티어 선택 UI --- */}
-                                        <div>
-                                            <label htmlFor="tier-waitlist" className="block text-sm font-medium text-gray-300 mb-1">현재 티어</label>
-                                            <select id="tier-waitlist" value={waitlistTier} onChange={(e) => setWaitlistTier(e.target.value)} className="w-full px-3 py-2 bg-gray-800 rounded-md">
-                                                <option value="" disabled>티어를 선택하세요</option>
-                                                {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
-
-                                        {/* --- 포지션 선택 UI --- */}
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
-                                            <div className="flex flex-wrap gap-2 mb-4">
-                                                <button
-                                                    onClick={() => handlePositionClick('ALL', true)}
-                                                    // ⭐️ [수정] selectedPositions -> waitlistSelectedPositions 로 변경
-                                                    className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600 hover:bg-gray-500'} transition-colors duration-200 active:scale-95`}
-                                                >
-                                                    ALL
-                                                </button>
-                                                <div className="w-full border-t border-gray-600 my-2"></div>
-                                                {POSITIONS.map(pos => (
-                                                    <button
-                                                        key={pos}
-                                                        onClick={() => handlePositionClick(pos, true)}
-                                                        // ⭐️ [수정] 모든 selectedPositions -> waitlistSelectedPositions 로 변경
-                                                        disabled={waitlistSelectedPositions.some(p => p.name === 'ALL') || (waitlistSelectedPositions.length >= 3 && !waitlistSelectedPositions.some(p => p.name === pos))}
-                                                        className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === pos) ? 'bg-blue-500' : 'bg-gray-600 hover:bg-gray-500'} disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 active:scale-95`}
-                                                    >
-                                                        {pos}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {/* ⭐️ [수정] 모든 selectedPositions -> waitlistSelectedPositions 로 변경 */}
-                                            {waitlistSelectedPositions.length > 0 && !waitlistSelectedPositions.some(p => p.name === 'ALL') && (
-                                                <div className="space-y-2 mt-4">
-                                                    <p className="text-sm font-medium text-gray-300">선택된 포지션 순위 지정:</p>
-                                                    {waitlistSelectedPositions.map((p) => (
-                                                        <div key={p.name} className="flex items-center gap-2 bg-gray-800 p-2 rounded-md">
-                                                            <span className="font-semibold text-white">{p.name}</span>
-                                                            <select
-                                                                value={p.rank}
-                                                                onChange={(e) => handleRankChange(p.name, parseInt(e.target.value), true)}
-                                                                className="ml-auto px-2 py-1 bg-gray-600 rounded-md text-white"
-                                                            >
-                                                                {[...Array(waitlistSelectedPositions.length)].map((_, i) => (
-                                                                    <option key={i + 1} value={i + 1}>{i + 1} 순위</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex gap-2 pt-2">
-                                            <button onClick={() => handleScrimAction('apply_waitlist')} className="w-full py-2 bg-green-600 hover:bg-green-700 rounded-md font-semibold">
-                                                참가 확정
-                                            </button>
-                                            <button onClick={() => setShowWaitlistForm(false)} className="w-full py-2 bg-gray-600 hover:bg-gray-500 rounded-md">
-                                                취소
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <button
-                                        onClick={() => {
-                                            if (scrim.scrimType === '칼바람') {
-                                                handleScrimAction('apply_waitlist');
-                                            } else {
-                                                setShowWaitlistForm(true);
-                                            }
-                                        }}
-                                        disabled={isWaitlistFull}
-                                        className="w-full py-2 bg-yellow-500 hover:bg-yellow-600 text-black rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
-                                    >
-                                        {isWaitlistFull ? '대기열이 가득 찼습니다' : '대기열 참가'}
-                                    </button>
-                                )}
-                            </div>
-                        )}
-
-                        {/* 대기자 목록 표시 (기존과 동일) */}
-                        <div className="space-y-2 max-w-2xl mx-auto">
-                            {waitlist.length > 0 ? (
-                                waitlist.map((applicant) => (
-                                    <div key={applicant.email} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-md">
-                                        <span className="font-semibold">
-                                            {applicant.nickname || applicant.email}
-                                            {scrim.scrimType !== '칼바람' && ` (${applicant.tier})`}
-                                        </span>
-                                        <div className="flex gap-2 items-center">
-                                            {scrim.scrimType !== '칼바람' && applicant.positions.map(pos => {
-                                                const match = pos.match(/(.+)\((\d+)순위\)/);
-                                                const displayValue = match ? `${match[1].trim()}(${match[2]})` : pos;
-                                                return (
-                                                    <span key={pos} className="bg-yellow-500 text-black text-xs px-2 py-1 rounded-full">
-                                                        {displayValue}
-                                                    </span>
-                                                );
-                                            })}
-                                            {canManage && (
-                                                <button
-                                                    onClick={() => handleScrimAction('remove_member', { memberEmailToRemove: applicant.email, nickname: applicant.nickname })}
-                                                    className="bg-red-500 text-xs px-2 py-1 rounded-full hover:bg-red-600"
-                                                >
-                                                    제외
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-gray-400 text-center">아직 대기자가 없습니다.</p>
-                            )}
-                        </div>
-                    </div>
-                    {/* ==================== 대기열 섹션 끝 ==================== */}
-                </>
-            )}
-
-            {scrim.status === '경기중' && (
-                <div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                        <div className="bg-gray-800 p-4 rounded-lg">
-                            <h3 className="text-xl font-bold mb-4 text-center text-blue-400">블루팀</h3>
-                            {(scrim.blueTeam || []).map(player => (
-                                <div key={player.email} className="flex items-center gap-4 mb-2">
-                                    <span className="w-1/2">
-                                        {player.nickname}
-                                        {scrim.scrimType !== '칼바람' && ` (${player.tier})`}
-                                    </span>
-                                    <ChampionSearchInput
-                                        playerId={player.email}
-                                        value={championSelections[player.email] || ''} // 이제 빈 문자열이 전달됩니다.
-                                        onChange={(championName) => setChampionSelections(prev => ({ ...prev, [player.email]: championName }))}
-                                        // 🔽 [변경] placeholder를 원하는 텍스트로 설정 🔽
-                                        placeholder="챔피언 선택..."
-                                        disabled={scrim.scrimType === '칼바람'}
-                                        disabledChampions={usedChampionsForPeerless}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                        <div className="bg-gray-800 p-4 rounded-lg">
-                            <h3 className="text-xl font-bold mb-4 text-center text-red-500">레드팀</h3>
-                            {(scrim.redTeam || []).map(player => (
-                                <div key={player.email} className="flex items-center gap-4 mb-2">
-                                    <span className="w-1/2">
-                                        {player.nickname}
-                                        {scrim.scrimType !== '칼바람' && ` (${player.tier})`}
-                                    </span>
-                                    <ChampionSearchInput
-                                        playerId={player.email}
-                                        value={championSelections[player.email] || ''} // 이제 빈 문자열이 전달됩니다.
-                                        onChange={(championName) => setChampionSelections(prev => ({ ...prev, [player.email]: championName }))}
-                                        // 🔽 [변경] placeholder를 원하는 텍스트로 설정 🔽
-                                        placeholder="챔피언 선택..."
-                                        disabled={scrim.scrimType === '칼바람'}
-                                        disabledChampions={usedChampionsForPeerless}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    {/* 임시 금지 목록 (fearlessUsedChampions) - 경기별로 묶어서 표시 */}
-                    {scrim.scrimType === '피어리스' && scrim.fearlessUsedChampions && scrim.fearlessUsedChampions.length > 0 && (
-                        <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-purple-700">
-                            <h3 className="text-xl font-bold mb-4 text-center text-purple-400">
-                                이번 내전 사용 챔피언 (초기화 가능)
-                            </h3>
-                            <div className="space-y-4">
-                                {/* ✅ [수정] (scrim.fearlessUsedChampions || []) 로 변경하여 에러 해결 */}
-                                {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) =>
-                                    (scrim.fearlessUsedChampions || []).slice(i * 10, i * 10 + 10)
-                                ).map((gameChampions, index) => (
-                                    <div key={index} className="p-3 bg-gray-700/50 rounded-md">
-                                        <p className="text-sm font-semibold text-gray-400 mb-2">
-                                            {index + 1}번째 경기 사용 챔피언
-                                        </p>
-                                        <div className="flex flex-wrap justify-center gap-2">
-                                            {gameChampions.map(championName => (
-                                                <span key={championName} className="px-3 py-1 bg-gray-700 text-sm rounded-md line-through">
-                                                    {championName}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
                     )}
+                </div>
 
-                    {canManage && (
-                        <div className="text-center space-x-4 mt-6">
-                            <button
-                                onClick={() => handleScrimAction('end_game', { winningTeam: 'blue', scrimType: scrim.scrimType })}
-                                className="py-2 px-8 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold"
-                            >
-                                블루팀 승리
-                            </button>
-                            <button
-                                onClick={() => handleScrimAction('end_game', { winningTeam: 'red', scrimType: scrim.scrimType })}
-                                className="py-2 px-8 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
-                            >
-                                레드팀 승리
-                            </button>
-
-                            <button
-                                onClick={() => handleScrimAction('reset_to_team_building')}
-                                className="py-2 px-8 bg-orange-600 hover:bg-orange-700 rounded-md font-semibold"
-                            >
-                                팀 구성으로 이동
-                            </button>
-                            {/* 피어리스일 때만 초기화 버튼 표시 (경기중 상태) */}
-                            {scrim.scrimType === '피어리스' && (
+                <header className="text-center mb-8">
+                    {isEditingTitle && canManage ? (
+                        <div className="flex items-center justify-center gap-2">
+                            <input
+                                type="text"
+                                value={newScrimName}
+                                onChange={(e) => setNewScrimName(e.target.value)}
+                                className="text-4xl font-bold text-yellow-400 bg-gray-700 rounded-md px-2 py-1 text-center"
+                            />
+                            <button onClick={handleUpdateScrimName} className="bg-green-600 px-3 py-1 rounded-md text-sm">저장</button>
+                            <button onClick={() => setIsEditingTitle(false)} className="bg-gray-600 px-3 py-1 rounded-md text-sm">취소</button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center gap-4">
+                            <h1 className="text-4xl font-bold text-yellow-400">{scrim.scrimName}</h1>
+                            {canManage && scrim.status !== '종료' && (
                                 <button
-                                    onClick={() => handleScrimAction('reset_peerless')}
-                                    className="py-2 px-8 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
+                                    onClick={() => {
+                                        setIsEditingTitle(true);
+                                        setNewScrimName(scrim.scrimName);
+                                    }}
+                                    className="text-xs bg-gray-600 p-2 rounded-md hover:bg-gray-500"
+                                    title="내전 제목 수정"
                                 >
-                                    피어리스 챔피언 목록 초기화
+                                    ✏️
                                 </button>
                             )}
                         </div>
                     )}
-                    {/* ==================== 대기열 섹션 시작 ==================== */}
-                    <div className="mt-8 pt-6 border-t border-gray-700">
-                        <h3 className="text-2xl font-bold mb-4 text-center text-yellow-400">
-                            대기자 목록 ({waitlist.length} / 10)
-                        </h3>
+                    <p className="text-lg text-gray-400 mt-2">
+                        상태: <span className="font-semibold text-green-400">{scrim.status}</span>
+                        <span className={`ml-3 px-2 py-0.5 text-xs font-semibold rounded-full border ${typeStyle}`}>
+                            {scrim.scrimType}
+                        </span>
+                    </p>
+                    <p className="text-sm text-gray-500 mt-1">주최자: {creatorNickname}</p>
+                </header>
 
-                        {/* 대기자 신청/취소 버튼 및 폼 */}
-                        {user && !isApplicant && (
-                            <div className="text-center mb-6 max-w-sm mx-auto">
-                                {isInWaitlist ? (
-                                    <button
-                                        onClick={() => handleScrimAction('leave_waitlist')}
-                                        className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
-                                    >
-                                        대기열 나가기
-                                    </button>
-                                ) : showWaitlistForm ? (
-                                    <div className="p-4 bg-gray-700 rounded-lg text-left space-y-4">
-                                        <h4 className="font-bold text-center">대기열 참가 신청</h4>
+                {canManage && scrim.status === '모집중' && (
+                    <div className="mb-8 p-4 bg-yellow-900/50 border border-yellow-700 rounded-lg text-center">
+                        <p className="mb-2">관리자/생성자 전용</p>
+                        <button
+                            onClick={() => handleScrimAction('start_team_building')}
+                            disabled={currentApplicantsForDisplay.length < 10}
+                            className="py-2 px-6 bg-yellow-600 hover:bg-yellow-700 rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
+                        >
+                            {currentApplicantsForDisplay.length < 10 ? `팀 구성을 위해 ${10 - currentApplicantsForDisplay.length}명이 더 필요합니다` : '팀 구성 시작하기'}
+                        </button>
+                    </div>
+                )}
 
-                                        {/* --- 티어 선택 UI --- */}
-                                        <div>
-                                            <label htmlFor="tier-waitlist" className="block text-sm font-medium text-gray-300 mb-1">현재 티어</label>
-                                            <select id="tier-waitlist" value={tier} onChange={(e) => setTier(e.target.value)} className="w-full px-3 py-2 bg-gray-800 rounded-md">
-                                                <option value="" disabled>티어를 선택하세요</option>
-                                                {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
+                {scrim.status === '팀 구성중' && canManage && (
+                    <>
+                        <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                                <TeamColumn id="applicants" title="남은 참가자" players={applicants} scrimType={scrim.scrimType} />
 
-                                        {/* ▼▼▼ [수정된 부분] 포지션 선택 UI 전체 코드 ▼▼▼ */}
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
-                                            <div className="flex flex-wrap gap-2 mb-4">
-                                                <button
-                                                    onClick={() => handlePositionClick('ALL', true)}
-                                                    className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600'}`}
-                                                >
-                                                    ALL
-                                                </button>
-                                                <div className="w-full border-t border-gray-700 my-2"></div>
+                                {/* 칼바람 모드일 때와 아닐 때 UI를 분리 */}
+                                {scrim.scrimType === '칼바람' ? (
+                                    <>
+                                        <TeamColumn id="blueTeam" title="블루팀" players={Object.values(blueTeamSlots).filter(Boolean) as Applicant[]} color="blue" scrimType={scrim.scrimType} />
+                                        <TeamColumn id="redTeam" title="레드팀" players={Object.values(redTeamSlots).filter(Boolean) as Applicant[]} color="red" scrimType={scrim.scrimType} />
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-blue-500">
+                                            <h3 className={`text-xl font-bold mb-4 text-center text-white`}>블루팀 ({Object.values(blueTeamSlots).filter(p => p !== null).length})</h3>
+                                            <div className="space-y-2 min-h-[300px]">
                                                 {POSITIONS.map(pos => (
-                                                    <button
-                                                        onClick={() => handlePositionClick('ALL', true)}
-                                                        className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600 hover:bg-gray-500'}`}
-                                                    >
-                                                        ALL
-                                                    </button>
+                                                    <PositionSlot
+                                                        key={`blueTeam-${pos}`}
+                                                        id={`blueTeam-${pos}`}
+                                                        positionName={pos}
+                                                        player={blueTeamSlots[pos]}
+                                                        teamId="blueTeam"
+                                                        onRemovePlayer={handleRemovePlayerFromSlot}
+                                                        scrimType={scrim.scrimType}
+                                                    />
                                                 ))}
                                             </div>
-                                            {selectedPositions.length > 0 && !selectedPositions.some(p => p.name === 'ALL') && (
-                                                <div className="space-y-2 mt-4">
-                                                    <p className="text-sm font-medium text-gray-300">선택된 포지션 순위 지정:</p>
-                                                    {selectedPositions.map((p) => (
-                                                        <div key={p.name} className="flex items-center gap-2 bg-gray-800 p-2 rounded-md">
-                                                            <span className="font-semibold text-white">{p.name}</span>
-                                                            <select
-                                                                value={p.rank}
-                                                                onChange={(e) => handleRankChange(p.name, parseInt(e.target.value), false)}
-                                                                className="ml-auto px-2 py-1 bg-gray-600 rounded-md text-white"
-                                                            >
-                                                                {[...Array(selectedPositions.length)].map((_, i) => (
-                                                                    <option key={i + 1} value={i + 1}>{i + 1} 순위</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
                                         </div>
-                                        {/* ▲▲▲ [수정된 부분] 포지션 선택 UI 전체 코드 ▲▲▲ */}
-
-                                        <div className="flex gap-2 pt-2">
-                                            <button onClick={() => handleScrimAction('apply_waitlist')} className="w-full py-2 bg-green-600 hover:bg-green-700 rounded-md font-semibold">
-                                                참가 확정
-                                            </button>
-                                            <button onClick={() => setShowWaitlistForm(false)} className="w-full py-2 bg-gray-600 hover:bg-gray-500 rounded-md">
-                                                취소
-                                            </button>
+                                        <div className="bg-gray-800 p-4 rounded-lg w-full border-2 border-red-500">
+                                            <h3 className={`text-xl font-bold mb-4 text-center text-white`}>레드팀 ({Object.values(redTeamSlots).filter(p => p !== null).length})</h3>
+                                            <div className="space-y-2 min-h-[300px]">
+                                                {POSITIONS.map(pos => (
+                                                    <PositionSlot
+                                                        key={`redTeam-${pos}`}
+                                                        id={`redTeam-${pos}`}
+                                                        positionName={pos}
+                                                        player={redTeamSlots[pos]}
+                                                        teamId="redTeam"
+                                                        onRemovePlayer={handleRemovePlayerFromSlot}
+                                                        scrimType={scrim.scrimType}
+                                                    />
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <button
-                                        onClick={() => {
-                                            if (scrim.scrimType === '칼바람') {
-                                                handleScrimAction('apply_waitlist');
-                                            } else {
-                                                setShowWaitlistForm(true);
-                                            }
-                                        }}
-                                        disabled={isWaitlistFull}
-                                        className="w-full py-2 bg-yellow-500 hover:bg-yellow-600 text-black rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
-                                    >
-                                        {isWaitlistFull ? '대기열이 가득 찼습니다' : '대기열 참가'}
-                                    </button>
+                                    </>
                                 )}
                             </div>
-                        )}
-
-                        {/* 대기자 목록 표시 (기존과 동일) */}
-                        <div className="space-y-2 max-w-2xl mx-auto">
-                            {waitlist.length > 0 ? (
-                                waitlist.map((applicant) => (
-                                    <div key={applicant.email} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-md">
-                                        <span className="font-semibold">
-                                            {applicant.nickname || applicant.email}
-                                            {scrim.scrimType !== '칼바람' && ` (${applicant.tier})`}
-                                        </span>
-                                        <div className="flex gap-2 items-center">
-                                            {scrim.scrimType !== '칼바람' && applicant.positions.map(pos => {
-                                                const match = pos.match(/(.+)\((\d+)순위\)/);
-                                                const displayValue = match ? `${match[1].trim()}(${match[2]})` : pos;
-                                                return (
-                                                    <span key={pos} className="bg-yellow-500 text-black text-xs px-2 py-1 rounded-full">
-                                                        {displayValue}
-                                                    </span>
-                                                );
-                                            })}
-                                            {canManage && (
-                                                <button
-                                                    onClick={() => handleScrimAction('remove_member', { memberEmailToRemove: applicant.email, nickname: applicant.nickname })}
-                                                    className="bg-red-500 text-xs px-2 py-1 rounded-full hover:bg-red-600"
-                                                >
-                                                    제외
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-gray-400 text-center">아직 대기자가 없습니다.</p>
-                            )}
+                        </DndContext>
+                        <div className="text-center space-x-4 mt-6">
+                            <button onClick={() => handleScrimAction('start_game')} className="py-2 px-8 bg-green-600 hover:bg-green-700 rounded-md font-semibold">경기 시작</button>
+                            {/* 랜덤 팀 구성 버튼 */}
+                            <button
+                                onClick={handleRandomizeTeams}
+                                className="py-2 px-8 bg-purple-600 hover:bg-purple-700 rounded-md font-semibold"
+                            >
+                                랜덤 팀
+                            </button>
+                            <button
+                                onClick={() => handleScrimAction('reset_to_recruiting')}
+                                className="py-2 px-8 bg-gray-600 hover:bg-gray-700 rounded-md font-semibold"
+                            >
+                                모집중 상태로 되돌리기
+                            </button>
+                            {/* '팀 구성중'일 때만 보이는 팀 초기화 버튼 */}
+                            <button
+                                onClick={() => {
+                                    if (confirm('모든 선수를 참가자 목록으로 되돌리고 팀을 초기화하시겠습니까?')) {
+                                        handleScrimAction('reset_teams_and_move_to_applicants');
+                                    }
+                                }}
+                                className="py-2 px-8 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
+                            >
+                                팀 초기화
+                            </button>
                         </div>
-                    </div>
-                    {/* ==================== 대기열 섹션 끝 ==================== */}
-                </div>
-            )}
+                        {/* ==================== 대기열 섹션 시작 ==================== */}
+                        <div className="mt-8 pt-6 border-t border-gray-700">
+                            <h3 className="text-2xl font-bold mb-4 text-center text-yellow-400">
+                                대기자 목록 ({waitlist.length} / 10)
+                            </h3>
 
-            {scrim.status === '모집중' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <section className="lg:col-span-1 bg-gray-800 p-6 rounded-lg h-fit">
-                        <h2 className="text-2xl font-bold mb-4">참가 신청</h2>
-                        {user ? (
-                            (isApplicant || isInWaitlist) ? (
-                                <div>
-                                    <p className="text-green-400 mb-4">
-                                        {isApplicant ? '이미 이 내전에 참가 신청했습니다.' : '현재 대기열에 있습니다.'}
-                                    </p>
-                                    <button
-                                        onClick={() => handleScrimAction(isApplicant ? 'leave' : 'leave_waitlist')}
-                                        className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
-                                    >
-                                        {isApplicant ? '신청 취소' : '대기열 나가기'}
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    {scrim.scrimType !== '칼바람' && (
-                                        <>
+                            {/* 대기자 신청/취소 버튼 및 폼 */}
+                            {user && !isApplicant && (
+                                <div className="text-center mb-6 max-w-sm mx-auto">
+                                    {isInWaitlist ? (
+                                        <button
+                                            onClick={() => handleScrimAction('leave_waitlist')}
+                                            className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
+                                        >
+                                            대기열 나가기
+                                        </button>
+                                    ) : showWaitlistForm ? (
+                                        <div className="p-4 bg-gray-700 rounded-lg text-left space-y-4">
+                                            <h4 className="font-bold text-center">대기열 참가 신청</h4>
+
+                                            {/* --- 티어 선택 UI --- */}
                                             <div>
-                                                <label htmlFor="tier" className="block text-sm font-medium text-gray-300 mb-1">현재 티어</label>
-                                                <select id="tier" value={tier} onChange={(e) => setTier(e.target.value)} className="w-full px-3 py-2 bg-gray-700 rounded-md">
+                                                <label htmlFor="tier-waitlist" className="block text-sm font-medium text-gray-300 mb-1">현재 티어</label>
+                                                <select id="tier-waitlist" value={waitlistTier} onChange={(e) => setWaitlistTier(e.target.value)} className="w-full px-3 py-2 bg-gray-800 rounded-md">
                                                     <option value="" disabled>티어를 선택하세요</option>
                                                     {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
                                                 </select>
                                             </div>
+
+                                            {/* --- 포지션 선택 UI --- */}
                                             <div>
                                                 <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
                                                 <div className="flex flex-wrap gap-2 mb-4">
                                                     <button
-                                                        onClick={() => handlePositionClick('ALL', false)} // ⭐️ isWaitlist: false 추가
+                                                        onClick={() => handlePositionClick('ALL', true)}
+                                                        className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600 hover:bg-gray-500'} transition-colors duration-200 active:scale-95`}
+                                                    >
+                                                        ALL
+                                                    </button>
+                                                    <div className="w-full border-t border-gray-600 my-2"></div>
+                                                    {POSITIONS.map(pos => (
+                                                        <button
+                                                            key={pos}
+                                                            onClick={() => handlePositionClick(pos, true)}
+                                                            disabled={waitlistSelectedPositions.some(p => p.name === 'ALL') || (waitlistSelectedPositions.length >= 3 && !waitlistSelectedPositions.some(p => p.name === pos))}
+                                                            className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === pos) ? 'bg-blue-500' : 'bg-gray-600 hover:bg-gray-500'} disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 active:scale-95`}
+                                                        >
+                                                            {pos}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {waitlistSelectedPositions.length > 0 && !waitlistSelectedPositions.some(p => p.name === 'ALL') && (
+                                                    <div className="space-y-2 mt-4">
+                                                        <p className="text-sm font-medium text-gray-300">선택된 포지션 순위 지정:</p>
+                                                        {waitlistSelectedPositions.map((p) => (
+                                                            <div key={p.name} className="flex items-center gap-2 bg-gray-800 p-2 rounded-md">
+                                                                <span className="font-semibold text-white">{p.name}</span>
+                                                                <select
+                                                                    value={p.rank}
+                                                                    onChange={(e) => handleRankChange(p.name, parseInt(e.target.value), true)}
+                                                                    className="ml-auto px-2 py-1 bg-gray-600 rounded-md text-white"
+                                                                >
+                                                                    {[...Array(waitlistSelectedPositions.length)].map((_, i) => (
+                                                                        <option key={i + 1} value={i + 1}>{i + 1} 순위</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="flex gap-2 pt-2">
+                                                <button onClick={() => handleScrimAction('apply_waitlist')} className="w-full py-2 bg-green-600 hover:bg-green-700 rounded-md font-semibold">
+                                                    참가 확정
+                                                </button>
+                                                <button onClick={() => setShowWaitlistForm(false)} className="w-full py-2 bg-gray-600 hover:bg-gray-500 rounded-md">
+                                                    취소
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => {
+                                                if (scrim.scrimType === '칼바람') {
+                                                    handleScrimAction('apply_waitlist');
+                                                } else {
+                                                    setShowWaitlistForm(true);
+                                                }
+                                            }}
+                                            disabled={isWaitlistFull}
+                                            className="w-full py-2 bg-yellow-500 hover:bg-yellow-600 text-black rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
+                                        >
+                                            {isWaitlistFull ? '대기열이 가득 찼습니다' : '대기열 참가'}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* 대기자 목록 표시 */}
+                            <div className="space-y-2 max-w-2xl mx-auto">
+                                {waitlist.length > 0 ? (
+                                    waitlist.map((applicant) => (
+                                        <div key={applicant.email} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-md">
+                                            <span className="font-semibold">
+                                                {applicant.nickname || applicant.email}
+                                                {scrim.scrimType !== '칼바람' && ` (${applicant.tier})`}
+                                            </span>
+                                            <div className="flex gap-2 items-center">
+                                                {scrim.scrimType !== '칼바람' && applicant.positions.map(pos => {
+                                                    const match = pos.match(/(.+)\((\d+)순위\)/);
+                                                    const displayValue = match ? `${match[1].trim()}(${match[2]})` : pos;
+                                                    return (
+                                                        <span key={pos} className="bg-yellow-500 text-black text-xs px-2 py-1 rounded-full">
+                                                            {displayValue}
+                                                        </span>
+                                                    );
+                                                })}
+                                                {canManage && (
+                                                    <button
+                                                        onClick={() => handleScrimAction('remove_member', { memberEmailToRemove: applicant.email, nickname: applicant.nickname })}
+                                                        className="bg-red-500 text-xs px-2 py-1 rounded-full hover:bg-red-600"
+                                                    >
+                                                        제외
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-gray-400 text-center">아직 대기자가 없습니다.</p>
+                                )}
+                            </div>
+                        </div>
+                        {/* ==================== 대기열 섹션 끝 ==================== */}
+                    </>
+                )}
+
+                {scrim.status === '경기중' && (
+                    <div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                            <div className="bg-gray-800 p-4 rounded-lg">
+                                <h3 className="text-xl font-bold mb-4 text-center text-blue-400">블루팀</h3>
+                                {(scrim.blueTeam || []).map(player => (
+                                    <div key={player.email} className="flex items-center gap-4 mb-2">
+                                        <span className="w-1/2">
+                                            {player.nickname}
+                                            {scrim.scrimType !== '칼바람' && ` (${player.tier})`}
+                                        </span>
+                                        <ChampionSearchInput
+                                            playerId={player.email}
+                                            value={championSelections[player.email] || ''} // 이제 빈 문자열이 전달됩니다.
+                                            onChange={(championName) => setChampionSelections(prev => ({ ...prev, [player.email]: championName }))}
+                                            // 🔽 [변경] placeholder를 원하는 텍스트로 설정 🔽
+                                            placeholder="챔피언 선택..."
+                                            disabled={scrim.scrimType === '칼바람'}
+                                            disabledChampions={usedChampionsForPeerless}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="bg-gray-800 p-4 rounded-lg">
+                                <h3 className="text-xl font-bold mb-4 text-center text-red-500">레드팀</h3>
+                                {(scrim.redTeam || []).map(player => (
+                                    <div key={player.email} className="flex items-center gap-4 mb-2">
+                                        <span className="w-1/2">
+                                            {player.nickname}
+                                            {scrim.scrimType !== '칼바람' && ` (${player.tier})`}
+                                        </span>
+                                        <ChampionSearchInput
+                                            playerId={player.email}
+                                            value={championSelections[player.email] || ''} // 이제 빈 문자열이 전달됩니다.
+                                            onChange={(championName) => setChampionSelections(prev => ({ ...prev, [player.email]: championName }))}
+                                            placeholder="챔피언 선택..."
+                                            disabled={scrim.scrimType === '칼바람'}
+                                            disabledChampions={usedChampionsForPeerless}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        {/* 임시 금지 목록 (fearlessUsedChampions) - 경기별로 묶어서 표시 */}
+                        {scrim.scrimType === '피어리스' && scrim.fearlessUsedChampions && scrim.fearlessUsedChampions.length > 0 && (
+                            <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-purple-700">
+                                <h3 className="text-xl font-bold mb-4 text-center text-purple-400">
+                                    금지 챔피언 (초기화 가능)
+                                </h3>
+                                <div className="space-y-4">
+                                    {/* (scrim.fearlessUsedChampions || []) 로 변경하여 에러 해결 */}
+                                    {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) =>
+                                        (scrim.fearlessUsedChampions || []).slice(i * 10, i * 10 + 10)
+                                    ).map((gameChampions, index) => (
+                                        <div key={index} className="p-3 bg-gray-700/50 rounded-md">
+                                            <p className="text-sm font-semibold text-gray-400 mb-2">
+                                                {index + 1}번째 경기 사용 챔피언
+                                            </p>
+                                            <div className="flex flex-wrap justify-center gap-2">
+                                                {gameChampions.map(championName => (
+                                                    <span key={championName} className="px-3 py-1 bg-gray-700 text-sm rounded-md line-through">
+                                                        {championName}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {canManage && (
+                            <div className="text-center space-x-4 mt-6">
+                                <button
+                                    onClick={() => handleScrimAction('end_game', { winningTeam: 'blue', scrimType: scrim.scrimType })}
+                                    className="py-2 px-8 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold"
+                                >
+                                    블루팀 승리
+                                </button>
+                                <button
+                                    onClick={() => handleScrimAction('end_game', { winningTeam: 'red', scrimType: scrim.scrimType })}
+                                    className="py-2 px-8 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
+                                >
+                                    레드팀 승리
+                                </button>
+
+                                <button
+                                    onClick={() => handleScrimAction('reset_to_team_building')}
+                                    className="py-2 px-8 bg-orange-600 hover:bg-orange-700 rounded-md font-semibold"
+                                >
+                                    팀 구성으로 이동
+                                </button>
+                                {/* 피어리스일 때만 초기화 버튼 표시 (경기중 상태) */}
+                                {scrim.scrimType === '피어리스' && (
+                                    <button
+                                        onClick={() => handleScrimAction('reset_peerless')}
+                                        className="py-2 px-8 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
+                                    >
+                                        피어리스 챔피언 목록 초기화
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        {/* ==================== 대기열 섹션 시작 ==================== */}
+                        <div className="mt-8 pt-6 border-t border-gray-700">
+                            <h3 className="text-2xl font-bold mb-4 text-center text-yellow-400">
+                                대기자 목록 ({waitlist.length} / 10)
+                            </h3>
+
+                            {/* 대기자 신청/취소 버튼 및 폼 */}
+                            {user && !isApplicant && (
+                                <div className="text-center mb-6 max-w-sm mx-auto">
+                                    {isInWaitlist ? (
+                                        <button
+                                            onClick={() => handleScrimAction('leave_waitlist')}
+                                            className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
+                                        >
+                                            대기열 나가기
+                                        </button>
+                                    ) : showWaitlistForm ? (
+                                        <div className="p-4 bg-gray-700 rounded-lg text-left space-y-4">
+                                            <h4 className="font-bold text-center">대기열 참가 신청</h4>
+
+                                            {/* --- 티어 선택 UI --- */}
+                                            <div>
+                                                <label htmlFor="tier-waitlist" className="block text-sm font-medium text-gray-300 mb-1">현재 티어</label>
+                                                <select id="tier-waitlist" value={tier} onChange={(e) => setTier(e.target.value)} className="w-full px-3 py-2 bg-gray-800 rounded-md">
+                                                    <option value="" disabled>티어를 선택하세요</option>
+                                                    {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+
+                                            {/* [수정된 부분] 포지션 선택 UI 전체 코드 */}
+                                            <div>
+                                                <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
+                                                <div className="flex flex-wrap gap-2 mb-4">
+                                                    <button
+                                                        onClick={() => handlePositionClick('ALL', true)}
                                                         className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600'}`}
                                                     >
                                                         ALL
@@ -1485,12 +1209,10 @@ export default function ScrimDetailPage() {
                                                     <div className="w-full border-t border-gray-700 my-2"></div>
                                                     {POSITIONS.map(pos => (
                                                         <button
-                                                            key={pos}
-                                                            onClick={() => handlePositionClick(pos, false)} // ⭐️ isWaitlist: false 추가
-                                                            disabled={selectedPositions.some(p => p.name === 'ALL') || (selectedPositions.length >= 3 && !selectedPositions.some(p => p.name === pos))}
-                                                            className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === pos) ? 'bg-blue-500' : 'bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                            onClick={() => handlePositionClick('ALL', true)}
+                                                            className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600 hover:bg-gray-500'}`}
                                                         >
-                                                            {pos}
+                                                            ALL
                                                         </button>
                                                     ))}
                                                 </div>
@@ -1498,11 +1220,11 @@ export default function ScrimDetailPage() {
                                                     <div className="space-y-2 mt-4">
                                                         <p className="text-sm font-medium text-gray-300">선택된 포지션 순위 지정:</p>
                                                         {selectedPositions.map((p) => (
-                                                            <div key={p.name} className="flex items-center gap-2 bg-gray-700 p-2 rounded-md">
+                                                            <div key={p.name} className="flex items-center gap-2 bg-gray-800 p-2 rounded-md">
                                                                 <span className="font-semibold text-white">{p.name}</span>
                                                                 <select
                                                                     value={p.rank}
-                                                                    onChange={(e) => handleRankChange(p.name, parseInt(e.target.value), false)} // ⭐️ isWaitlist: false 추가
+                                                                    onChange={(e) => handleRankChange(p.name, parseInt(e.target.value), false)}
                                                                     className="ml-auto px-2 py-1 bg-gray-600 rounded-md text-white"
                                                                 >
                                                                     {[...Array(selectedPositions.length)].map((_, i) => (
@@ -1514,209 +1236,344 @@ export default function ScrimDetailPage() {
                                                     </div>
                                                 )}
                                             </div>
-                                        </>
-                                    )}
-                                    {isFull ? (
-                                        <button onClick={() => handleScrimAction('apply_waitlist')} disabled={isWaitlistFull} className="w-full py-2 bg-yellow-500 hover:bg-yellow-600 text-black rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed">
-                                            {isWaitlistFull ? '대기열이 가득 찼습니다' : '대기열 참가'}
-                                        </button>
+                                            {/* 포지션 선택 UI 전체 코드 */}
+
+                                            <div className="flex gap-2 pt-2">
+                                                <button onClick={() => handleScrimAction('apply_waitlist')} className="w-full py-2 bg-green-600 hover:bg-green-700 rounded-md font-semibold">
+                                                    참가 확정
+                                                </button>
+                                                <button onClick={() => setShowWaitlistForm(false)} className="w-full py-2 bg-gray-600 hover:bg-gray-500 rounded-md">
+                                                    취소
+                                                </button>
+                                            </div>
+                                        </div>
                                     ) : (
-                                        <button onClick={() => handleScrimAction('apply')} className="w-full py-2 bg-green-600 hover:bg-green-700 rounded-md font-semibold">
-                                            신청하기
+                                        <button
+                                            onClick={() => {
+                                                if (scrim.scrimType === '칼바람') {
+                                                    handleScrimAction('apply_waitlist');
+                                                } else {
+                                                    setShowWaitlistForm(true);
+                                                }
+                                            }}
+                                            disabled={isWaitlistFull}
+                                            className="w-full py-2 bg-yellow-500 hover:bg-yellow-600 text-black rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
+                                        >
+                                            {isWaitlistFull ? '대기열이 가득 찼습니다' : '대기열 참가'}
                                         </button>
                                     )}
                                 </div>
-                            )
-                        ) : (
-                            <p className="text-gray-400">참가 신청을 하려면 로그인이 필요합니다.</p>
+                            )}
+
+                            {/* 대기자 목록 표시 (기존과 동일) */}
+                            <div className="space-y-2 max-w-2xl mx-auto">
+                                {waitlist.length > 0 ? (
+                                    waitlist.map((applicant) => (
+                                        <div key={applicant.email} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-md">
+                                            <span className="font-semibold">
+                                                {applicant.nickname || applicant.email}
+                                                {scrim.scrimType !== '칼바람' && ` (${applicant.tier})`}
+                                            </span>
+                                            <div className="flex gap-2 items-center">
+                                                {scrim.scrimType !== '칼바람' && applicant.positions.map(pos => {
+                                                    const match = pos.match(/(.+)\((\d+)순위\)/);
+                                                    const displayValue = match ? `${match[1].trim()}(${match[2]})` : pos;
+                                                    return (
+                                                        <span key={pos} className="bg-yellow-500 text-black text-xs px-2 py-1 rounded-full">
+                                                            {displayValue}
+                                                        </span>
+                                                    );
+                                                })}
+                                                {canManage && (
+                                                    <button
+                                                        onClick={() => handleScrimAction('remove_member', { memberEmailToRemove: applicant.email, nickname: applicant.nickname })}
+                                                        className="bg-red-500 text-xs px-2 py-1 rounded-full hover:bg-red-600"
+                                                    >
+                                                        제외
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-gray-400 text-center">아직 대기자가 없습니다.</p>
+                                )}
+                            </div>
+                        </div>
+                        {/* ==================== 대기열 섹션 끝 ==================== */}
+                    </div>
+                )}
+
+                {scrim.status === '모집중' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <section className="lg:col-span-1 bg-gray-800 p-6 rounded-lg h-fit">
+                            <h2 className="text-2xl font-bold mb-4">참가 신청</h2>
+                            {user ? (
+                                (isApplicant || isInWaitlist) ? (
+                                    <div>
+                                        <p className="text-green-400 mb-4">
+                                            {isApplicant ? '이미 이 내전에 참가 신청했습니다.' : '현재 대기열에 있습니다.'}
+                                        </p>
+                                        <button
+                                            onClick={() => handleScrimAction(isApplicant ? 'leave' : 'leave_waitlist')}
+                                            className="w-full py-2 bg-red-600 hover:bg-red-700 rounded-md font-semibold"
+                                        >
+                                            {isApplicant ? '신청 취소' : '대기열 나가기'}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {scrim.scrimType !== '칼바람' && (
+                                            <>
+                                                <div>
+                                                    <label htmlFor="tier" className="block text-sm font-medium text-gray-300 mb-1">현재 티어</label>
+                                                    <select id="tier" value={tier} onChange={(e) => setTier(e.target.value)} className="w-full px-3 py-2 bg-gray-700 rounded-md">
+                                                        <option value="" disabled>티어를 선택하세요</option>
+                                                        {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
+                                                    <div className="flex flex-wrap gap-2 mb-4">
+                                                        <button
+                                                            onClick={() => handlePositionClick('ALL', false)} // ⭐️ isWaitlist: false 추가
+                                                            className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === 'ALL') ? 'bg-green-500' : 'bg-gray-600'}`}
+                                                        >
+                                                            ALL
+                                                        </button>
+                                                        <div className="w-full border-t border-gray-700 my-2"></div>
+                                                        {POSITIONS.map(pos => (
+                                                            <button
+                                                                key={pos}
+                                                                onClick={() => handlePositionClick(pos, false)} // ⭐️ isWaitlist: false 추가
+                                                                disabled={selectedPositions.some(p => p.name === 'ALL') || (selectedPositions.length >= 3 && !selectedPositions.some(p => p.name === pos))}
+                                                                className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === pos) ? 'bg-blue-500' : 'bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                            >
+                                                                {pos}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {selectedPositions.length > 0 && !selectedPositions.some(p => p.name === 'ALL') && (
+                                                        <div className="space-y-2 mt-4">
+                                                            <p className="text-sm font-medium text-gray-300">선택된 포지션 순위 지정:</p>
+                                                            {selectedPositions.map((p) => (
+                                                                <div key={p.name} className="flex items-center gap-2 bg-gray-700 p-2 rounded-md">
+                                                                    <span className="font-semibold text-white">{p.name}</span>
+                                                                    <select
+                                                                        value={p.rank}
+                                                                        onChange={(e) => handleRankChange(p.name, parseInt(e.target.value), false)} // ⭐️ isWaitlist: false 추가
+                                                                        className="ml-auto px-2 py-1 bg-gray-600 rounded-md text-white"
+                                                                    >
+                                                                        {[...Array(selectedPositions.length)].map((_, i) => (
+                                                                            <option key={i + 1} value={i + 1}>{i + 1} 순위</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
+                                        {isFull ? (
+                                            <button onClick={() => handleScrimAction('apply_waitlist')} disabled={isWaitlistFull} className="w-full py-2 bg-yellow-500 hover:bg-yellow-600 text-black rounded-md font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                                {isWaitlistFull ? '대기열이 가득 찼습니다' : '대기열 참가'}
+                                            </button>
+                                        ) : (
+                                            <button onClick={() => handleScrimAction('apply')} className="w-full py-2 bg-green-600 hover:bg-green-700 rounded-md font-semibold">
+                                                신청하기
+                                            </button>
+                                        )}
+                                    </div>
+                                )
+                            ) : (
+                                <p className="text-gray-400">참가 신청을 하려면 로그인이 필요합니다.</p>
+                            )}
+                        </section>
+                        <section className="lg:col-span-2 bg-gray-800 p-6 rounded-lg">
+                            <h2 className="text-2xl font-bold mb-4">참가자 목록 ({(scrim.applicants || []).length} / 10)</h2>
+                            <div className="space-y-2 mb-6">
+                                {(scrim.applicants || []).length > 0 ? (
+                                    (scrim.applicants || []).map((applicant) => (
+                                        <div key={applicant.email} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-md">
+                                            <span className="font-semibold">
+                                                {applicant.nickname || applicant.email}
+                                                {scrim.scrimType !== '칼바람' && ` (${applicant.tier})`}
+                                            </span>
+                                            <div className="flex gap-2 items-center">
+                                                {scrim.scrimType !== '칼바람' && (applicant.positions || []).map(pos => {
+                                                    const match = pos.match(/(.+)\((\d+)순위\)/);
+                                                    const displayValue = match ? `${match[1].trim()}(${match[2]})` : pos;
+                                                    return <span key={pos} className="bg-blue-500 text-xs px-2 py-1 rounded-full">{displayValue}</span>;
+                                                })}
+                                                {canManage && (
+                                                    <button onClick={() => handleScrimAction('remove_member', { memberEmailToRemove: applicant.email, nickname: applicant.nickname })} className="bg-red-500 text-xs px-2 py-1 rounded-full hover:bg-red-600">
+                                                        제외
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (<p className="text-gray-400">아직 참가 신청자가 없습니다.</p>)}
+                            </div>
+
+                            <h2 className="text-2xl font-bold mb-4">대기자 목록 ({(scrim.waitlist || []).length} / 10)</h2>
+                            <div className="space-y-2">
+                                {(scrim.waitlist || []).length > 0 ? (
+                                    (scrim.waitlist || []).map((applicant) => (
+                                        <div key={applicant.email} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-md">
+                                            <span className="font-semibold">
+                                                {applicant.nickname || applicant.email}
+                                                {scrim.scrimType !== '칼바람' && ` (${applicant.tier})`}
+                                            </span>
+                                            <div className="flex gap-2 items-center">
+                                                {scrim.scrimType !== '칼바람' && (applicant.positions || []).map(pos => {
+                                                    const match = pos.match(/(.+)\((\d+)순위\)/);
+                                                    const displayValue = match ? `${match[1].trim()}(${match[2]})` : pos;
+                                                    return <span key={pos} className="bg-yellow-500 text-xs px-2 py-1 rounded-full">{displayValue}</span>;
+                                                })}
+                                                {canManage && (
+                                                    <button onClick={() => handleScrimAction('remove_member', { memberEmailToRemove: applicant.email, nickname: applicant.nickname })} className="bg-red-500 text-xs px-2 py-1 rounded-full hover:bg-red-600">
+                                                        제외
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (<p className="text-gray-400">아직 대기자가 없습니다.</p>)}
+                            </div>
+                        </section>
+                    </div>
+                )}
+
+                {/* '종료' 상태 UI 전체 */}
+                {scrim.status === '종료' && (
+                    <div>
+                        <h2 className="text-3xl font-bold text-center mb-6">
+                            경기 종료:
+                            <span className={scrim.winningTeam === 'blue' ? 'text-blue-400' : 'text-red-500'}>
+                                {scrim.winningTeam === 'blue' ? ' 블루팀 승리!' : ' 레드팀 승리!'}
+                            </span>
+                        </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* 블루팀 */}
+                            <div className="bg-gray-800 p-4 rounded-lg border-2 border-blue-500">
+                                <h3 className="text-xl font-bold mb-4 text-center text-blue-400">블루팀</h3>
+                                <div className="space-y-3">
+                                    {POSITIONS.map(pos => {
+                                        const player = blueTeamSlots[pos];
+                                        if (!player) return <div key={pos} className="h-[68px]"></div>; // 빈 슬롯 높이 유지
+                                        return (
+                                            <div key={player.email} className="flex items-center gap-4 bg-gray-700/50 p-3 rounded-md">
+                                                {player.championImageUrl ? (
+                                                    <Image
+                                                        src={player.championImageUrl}
+                                                        alt={player.champion || '챔피언'}
+                                                        width={48}
+                                                        height={48}
+                                                        className="rounded-md"
+                                                    />
+                                                ) : (
+                                                    <div className="w-12 h-12 bg-gray-600 rounded-md flex-shrink-0"></div>
+                                                )}
+                                                <div className="flex-grow">
+                                                    <p className="font-bold text-lg">{player.nickname}</p>
+                                                    <p className="text-sm text-gray-400">{player.tier}</p>
+                                                </div>
+                                                <span className="font-semibold text-yellow-400">{player.champion}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            {/* 레드팀 */}
+                            <div className="bg-gray-800 p-4 rounded-lg border-2 border-red-500">
+                                <h3 className="text-xl font-bold mb-4 text-center text-red-500">레드팀</h3>
+                                <div className="space-y-3">
+                                    {POSITIONS.map(pos => {
+                                        const player = redTeamSlots[pos];
+                                        if (!player) return <div key={pos} className="h-[68px]"></div>; // 빈 슬롯 높이 유지
+                                        return (
+                                            <div key={player.email} className="flex items-center gap-4 bg-gray-700/50 p-3 rounded-md">
+                                                {player.championImageUrl ? (
+                                                    <Image
+                                                        src={player.championImageUrl}
+                                                        alt={player.champion || '챔피언'}
+                                                        width={48}
+                                                        height={48}
+                                                        className="rounded-md"
+                                                    />
+                                                ) : (
+                                                    <div className="w-12 h-12 bg-gray-600 rounded-md flex-shrink-0"></div>
+                                                )}
+                                                <div className="flex-grow">
+                                                    <p className="font-bold text-lg">{player.nickname}</p>
+                                                    <p className="text-sm text-gray-400">{player.tier}</p>
+                                                </div>
+                                                <span className="font-semibold text-yellow-400">{player.champion}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 임시 금지 목록 (fearlessUsedChampions) - 경기별로 묶어서 표시 */}
+                        {scrim.scrimType === '피어리스' && scrim.fearlessUsedChampions && scrim.fearlessUsedChampions.length > 0 && (
+                            <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-purple-700">
+                                <h3 className="text-xl font-bold mb-4 text-center text-purple-400">
+                                    금지 챔피언 (초기화 가능)
+                                </h3>
+                                <div className="space-y-4">
+                                    {/* (scrim.fearlessUsedChampions || []) 로 변경하여 에러 해결 */}
+                                    {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) =>
+                                        (scrim.fearlessUsedChampions || []).slice(i * 10, i * 10 + 10)
+                                    ).map((gameChampions, index) => (
+                                        <div key={index} className="p-3 bg-gray-700/50 rounded-md">
+                                            <p className="text-sm font-semibold text-gray-400 mb-2">
+                                                {index + 1}번째 경기 사용 챔피언
+                                            </p>
+                                            <div className="flex flex-wrap justify-center gap-2">
+                                                {gameChampions.map(championName => (
+                                                    <span key={championName} className="px-3 py-1 bg-gray-700 text-sm rounded-md line-through">
+                                                        {championName}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         )}
-                    </section>
-                    <section className="lg:col-span-2 bg-gray-800 p-6 rounded-lg">
-                        <h2 className="text-2xl font-bold mb-4">참가자 목록 ({(scrim.applicants || []).length} / 10)</h2>
-                        <div className="space-y-2 mb-6">
-                            {(scrim.applicants || []).length > 0 ? (
-                                (scrim.applicants || []).map((applicant) => (
-                                    <div key={applicant.email} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-md">
-                                        <span className="font-semibold">
-                                            {applicant.nickname || applicant.email}
-                                            {scrim.scrimType !== '칼바람' && ` (${applicant.tier})`}
-                                        </span>
-                                        <div className="flex gap-2 items-center">
-                                            {scrim.scrimType !== '칼바람' && (applicant.positions || []).map(pos => {
-                                                const match = pos.match(/(.+)\((\d+)순위\)/);
-                                                const displayValue = match ? `${match[1].trim()}(${match[2]})` : pos;
-                                                return <span key={pos} className="bg-blue-500 text-xs px-2 py-1 rounded-full">{displayValue}</span>;
-                                            })}
-                                            {canManage && (
-                                                <button onClick={() => handleScrimAction('remove_member', { memberEmailToRemove: applicant.email, nickname: applicant.nickname })} className="bg-red-500 text-xs px-2 py-1 rounded-full hover:bg-red-600">
-                                                    제외
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (<p className="text-gray-400">아직 참가 신청자가 없습니다.</p>)}
-                        </div>
 
-                        <h2 className="text-2xl font-bold mb-4">대기자 목록 ({(scrim.waitlist || []).length} / 10)</h2>
-                        <div className="space-y-2">
-                            {(scrim.waitlist || []).length > 0 ? (
-                                (scrim.waitlist || []).map((applicant) => (
-                                    <div key={applicant.email} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-md">
-                                        <span className="font-semibold">
-                                            {applicant.nickname || applicant.email}
-                                            {scrim.scrimType !== '칼바람' && ` (${applicant.tier})`}
-                                        </span>
-                                        <div className="flex gap-2 items-center">
-                                            {scrim.scrimType !== '칼바람' && (applicant.positions || []).map(pos => {
-                                                const match = pos.match(/(.+)\((\d+)순위\)/);
-                                                const displayValue = match ? `${match[1].trim()}(${match[2]})` : pos;
-                                                return <span key={pos} className="bg-yellow-500 text-xs px-2 py-1 rounded-full">{displayValue}</span>;
-                                            })}
-                                            {canManage && (
-                                                <button onClick={() => handleScrimAction('remove_member', { memberEmailToRemove: applicant.email, nickname: applicant.nickname })} className="bg-red-500 text-xs px-2 py-1 rounded-full hover:bg-red-600">
-                                                    제외
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (<p className="text-gray-400">아직 대기자가 없습니다.</p>)}
-                        </div>
-                    </section>
-                </div>
-            )}
-
-            {/* ▼▼▼ [수정된 부분] '종료' 상태 UI 전체 ▼▼▼ */}
-            {scrim.status === '종료' && (
-                <div>
-                    <h2 className="text-3xl font-bold text-center mb-6">
-                        경기 종료:
-                        <span className={scrim.winningTeam === 'blue' ? 'text-blue-400' : 'text-red-500'}>
-                            {scrim.winningTeam === 'blue' ? ' 블루팀 승리!' : ' 레드팀 승리!'}
-                        </span>
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* 블루팀 */}
-                        <div className="bg-gray-800 p-4 rounded-lg border-2 border-blue-500">
-                            <h3 className="text-xl font-bold mb-4 text-center text-blue-400">블루팀</h3>
-                            <div className="space-y-3">
-                                {/* ✅ [수정] scrim.blueTeam 대신 blueTeamSlots를 사용하고, POSITIONS 기준으로 렌더링 */}
-                                {POSITIONS.map(pos => {
-                                    const player = blueTeamSlots[pos];
-                                    if (!player) return <div key={pos} className="h-[68px]"></div>; // 빈 슬롯 높이 유지
-                                    return (
-                                        <div key={player.email} className="flex items-center gap-4 bg-gray-700/50 p-3 rounded-md">
-                                            {player.championImageUrl ? (
-                                                <Image
-                                                    src={player.championImageUrl}
-                                                    alt={player.champion || '챔피언'}
-                                                    width={48}
-                                                    height={48}
-                                                    className="rounded-md"
-                                                />
-                                            ) : (
-                                                <div className="w-12 h-12 bg-gray-600 rounded-md flex-shrink-0"></div>
-                                            )}
-                                            <div className="flex-grow">
-                                                <p className="font-bold text-lg">{player.nickname}</p>
-                                                <p className="text-sm text-gray-400">{player.tier}</p>
-                                            </div>
-                                            <span className="font-semibold text-yellow-400">{player.champion}</span>
-                                        </div>
-                                    );
-                                })}
+                        {canManage && (
+                            <div className="text-center mt-6 space-x-4">
+                                <button
+                                    onClick={() => handleScrimAction('reset_to_team_building')}
+                                    className="py-2 px-6 bg-orange-600 hover:bg-orange-700 rounded-md font-semibold text-sm"
+                                >
+                                    팀 구성으로 이동
+                                </button>
+                                <button
+                                    onClick={() => handleScrimAction('reset_to_recruiting')}
+                                    className="py-2 px-6 bg-gray-600 hover:bg-gray-700 rounded-md font-semibold text-sm"
+                                >
+                                    모집중으로 이동
+                                </button>
+                                {scrim.scrimType === '피어리스' && (
+                                    <button
+                                        onClick={() => handleScrimAction('reset_peerless')}
+                                        className="py-2 px-6 bg-red-800 hover:bg-red-700 rounded-md font-semibold text-sm"
+                                    >
+                                        피어리스 기록 초기화
+                                    </button>
+                                )}
                             </div>
-                        </div>
-                        {/* 레드팀 */}
-                        <div className="bg-gray-800 p-4 rounded-lg border-2 border-red-500">
-                            <h3 className="text-xl font-bold mb-4 text-center text-red-500">레드팀</h3>
-                            <div className="space-y-3">
-                                {/* ✅ [수정] scrim.redTeam 대신 redTeamSlots를 사용하고, POSITIONS 기준으로 렌더링 */}
-                                {POSITIONS.map(pos => {
-                                    const player = redTeamSlots[pos];
-                                    if (!player) return <div key={pos} className="h-[68px]"></div>; // 빈 슬롯 높이 유지
-                                    return (
-                                        <div key={player.email} className="flex items-center gap-4 bg-gray-700/50 p-3 rounded-md">
-                                            {player.championImageUrl ? (
-                                                <Image
-                                                    src={player.championImageUrl}
-                                                    alt={player.champion || '챔피언'}
-                                                    width={48}
-                                                    height={48}
-                                                    className="rounded-md"
-                                                />
-                                            ) : (
-                                                <div className="w-12 h-12 bg-gray-600 rounded-md flex-shrink-0"></div>
-                                            )}
-                                            <div className="flex-grow">
-                                                <p className="font-bold text-lg">{player.nickname}</p>
-                                                <p className="text-sm text-gray-400">{player.tier}</p>
-                                            </div>
-                                            <span className="font-semibold text-yellow-400">{player.champion}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
+                        )}
                     </div>
 
-                    {/* 임시 금지 목록 (fearlessUsedChampions) - 경기별로 묶어서 표시 */}
-                    {scrim.scrimType === '피어리스' && scrim.fearlessUsedChampions && scrim.fearlessUsedChampions.length > 0 && (
-                        <div className="mt-8 p-4 bg-gray-800 rounded-lg border border-purple-700">
-                            <h3 className="text-xl font-bold mb-4 text-center text-purple-400">
-                                이번 내전 사용 챔피언 (초기화 가능)
-                            </h3>
-                            <div className="space-y-4">
-                                {/* ✅ [수정] (scrim.fearlessUsedChampions || []) 로 변경하여 에러 해결 */}
-                                {Array.from({ length: Math.ceil((scrim.fearlessUsedChampions || []).length / 10) }, (_, i) =>
-                                    (scrim.fearlessUsedChampions || []).slice(i * 10, i * 10 + 10)
-                                ).map((gameChampions, index) => (
-                                    <div key={index} className="p-3 bg-gray-700/50 rounded-md">
-                                        <p className="text-sm font-semibold text-gray-400 mb-2">
-                                            {index + 1}번째 경기 사용 챔피언
-                                        </p>
-                                        <div className="flex flex-wrap justify-center gap-2">
-                                            {gameChampions.map(championName => (
-                                                <span key={championName} className="px-3 py-1 bg-gray-700 text-sm rounded-md line-through">
-                                                    {championName}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {canManage && (
-                        <div className="text-center mt-6 space-x-4">
-                            <button
-                                onClick={() => handleScrimAction('reset_to_team_building')}
-                                className="py-2 px-6 bg-orange-600 hover:bg-orange-700 rounded-md font-semibold text-sm"
-                            >
-                                팀 구성으로 이동
-                            </button>
-                            <button
-                                onClick={() => handleScrimAction('reset_to_recruiting')}
-                                className="py-2 px-6 bg-gray-600 hover:bg-gray-700 rounded-md font-semibold text-sm"
-                            >
-                                모집중으로 이동
-                            </button>
-                            {scrim.scrimType === '피어리스' && (
-                                <button
-                                    onClick={() => handleScrimAction('reset_peerless')}
-                                    className="py-2 px-6 bg-red-800 hover:bg-red-700 rounded-md font-semibold text-sm"
-                                >
-                                    피어리스 기록 초기화
-                                </button>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-            )}
-
-        </main>
+                )}
+            </main>
+        </ProtectedRoute >
     )
 }

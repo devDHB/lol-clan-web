@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase-admin'; // Firebase Admin SDK 인스턴스
-import admin from 'firebase-admin'; // admin 객체 직접 임포트
+import { db } from '@/lib/firebase-admin';
+import admin from 'firebase-admin';
 
 // 타입 정의
 interface Member {
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
 
 
 // PUT: 파티 참가/나가기/대기열을 처리하는 함수
-export async function PUT(request: NextRequest) { // Request 대신 NextRequest 사용 권장
+export async function PUT(request: NextRequest) {
   try {
     const { partyId, userData, action } = await request.json();
     const userEmail = userData.email;
@@ -213,7 +213,6 @@ export async function PATCH(request: NextRequest) {
       if (!hasEditPermission) {
         return NextResponse.json({ error: '파티 정보를 수정할 권한이 없습니다.' }, { status: 403 });
       }
-      // ✅ [수정] newPlayStyle 추가
       const { newPartyName, newRequiredTier, newStartTime, newPlayStyle } = body;
       const updates: { [key: string]: any } = {};
       if (newPartyName !== undefined) updates.partyName = newPartyName;
@@ -241,7 +240,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 // DELETE: 파티를 삭제하는 함수
-export async function DELETE(request: NextRequest) { // Request 대신 NextRequest 사용 권장
+export async function DELETE(request: NextRequest) {
   try {
     const { partyId, requesterEmail } = await request.json();
 

@@ -235,7 +235,7 @@ export default function WriteNoticePage() {
           </div>
 
           <div className="flex justify-end gap-4 pt-4">
-            {/* ✅ [수정] 취소 버튼 색상 변경 */}
+            {/* 취소 버튼 */}
             <button
               type="button"
               onClick={() => router.push('/notices')}
