@@ -145,7 +145,7 @@ export async function GET(
             data.redTeam = addImageUrl(data.redTeam);
         }
 
-        function isFirestoreTimestamp(obj: any): obj is FirestoreTimestamp {
+        function isFirestoreTimestamp(obj: unknown): obj is FirestoreTimestamp {
             return (
                 typeof obj === 'object' &&
                 obj !== null &&

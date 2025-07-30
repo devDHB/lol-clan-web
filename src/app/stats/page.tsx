@@ -108,15 +108,15 @@ export default function StatsPage() {
         if (games === 0) return 0;
         return (wins / games) * 100;
     };
-
+    
     const sortedStats = useMemo(() => {
-        let sortableItems = [...allStats];
+        const sortableItems = [...allStats];
         if (sortConfig.key) {
             sortableItems.sort((a, b) => {
                 const key = sortConfig.key;
                 let aValue: string | number;
                 let bValue: string | number;
-
+    
                 if (key === 'winRate') {
                     aValue = calculateWinRate(a.totalWins, a.totalGames);
                     bValue = calculateWinRate(b.totalWins, b.totalGames);
@@ -130,7 +130,7 @@ export default function StatsPage() {
                     aValue = a.positions[key]?.games || 0;
                     bValue = b.positions[key]?.games || 0;
                 }
-
+    
                 if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
                 if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
