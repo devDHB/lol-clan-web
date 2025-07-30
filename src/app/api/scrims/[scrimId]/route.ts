@@ -112,8 +112,8 @@ async function checkAdminPermission(email: string): Promise<boolean> {
 
 
 export async function GET(
-    _request: NextRequest,
-    { params }: { params: { scrimId: string } }
+    request: NextRequest,
+    { params }: { params: Promise<{ scrimId: string }> }  // Promise로 변경
 ) {
     try {
         const { scrimId } = await params;
@@ -191,7 +191,7 @@ export async function GET(
 // PATCH: 내전 제목과 경기 챔피언 수정을 모두 처리하는 통합 함수
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { scrimId: string } }
+    { params }: { params: Promise<{ scrimId: string }> }  // Promise로 변경
 ) {
     try {
         const { scrimId } = await params;
