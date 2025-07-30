@@ -11,11 +11,21 @@ interface ChampionInfo {
     imageUrl: string;
 }
 
+interface MatchPlayer {
+    email: string;
+    nickname: string;
+    tier: string;
+    positions: string[];
+    champion?: string;
+    assignedPosition?: string;
+    championImageUrl?: string;
+}
+
+
 // --- 공통 함수: Riot API 챔피언 목록 가져오기 (캐싱 포함) ---
 let championList: ChampionInfo[] = [];
 let lastFetched: number = 0;
 const CACHE_DURATION = 1000 * 60 * 60; // 1시간 캐시
-
 
 async function getChampionList() {
     if (Date.now() - lastFetched > CACHE_DURATION || championList.length === 0) {
@@ -39,19 +49,6 @@ async function getChampionList() {
         }
     }
     return championList;
-}
-
-// --- 공통 함수: 관리자 권한 확인 ---
-async function checkAdminPermission(email: string): Promise<boolean> {
-    try {
-        const userDoc = await db.collection('users').where('email', '==', email).limit(1).get();
-        if (userDoc.empty) return false;
-        const userData = userDoc.docs[0].data();
-        return userData?.role === '총관리자' || userData?.role === '관리자';
-    } catch (error) {
-        console.error('관리자 권한 확인 중 에러 발생:', error);
-        return false;
-    }
 }
 
 // --- 공통 함수: 총관리자 권한 확인 ---
@@ -87,27 +84,33 @@ export async function GET(
         const data = doc.data();
 
         if (data) {
-            const addImageUrl = (teamData: any[]) => (teamData || []).map(player => ({
+            const addImageUrl = (teamData: MatchPlayer[]) => (teamData || []).map(player => ({
                 ...player,
-                championImageUrl: championImageMap.get(player.champion) || null
+                // ✅ [수정] player.champion이 존재할 때만 get을 호출하도록 변경
+                championImageUrl: player.champion ? championImageMap.get(player.champion) || null : null
             }));
 
             data.blueTeam = addImageUrl(data.blueTeam);
             data.redTeam = addImageUrl(data.redTeam);
         }
 
-        const serializeData = (obj: any): any => {
+        const serializeData = (obj: Record<string, any>): Record<string, unknown> => {
             if (!obj) return obj;
-            if (obj.toDate && typeof obj.toDate === 'function') return obj.toDate().toISOString();
-            if (Array.isArray(obj)) return obj.map(serializeData);
-            if (typeof obj === 'object') {
-                const newObj: { [key: string]: any } = {};
-                for (const key in obj) {
-                    newObj[key] = serializeData(obj[key]);
+
+            const newObj: { [key: string]: unknown } = {};
+            for (const key in obj) {
+                const value = obj[key];
+                if (value && typeof value.toDate === 'function') {
+                    newObj[key] = value.toDate().toISOString();
+                } else if (Array.isArray(value)) {
+                    newObj[key] = value.map(item => (typeof item === 'object' && item !== null) ? serializeData(item) : item);
+                } else if (typeof value === 'object' && value !== null) {
+                    newObj[key] = serializeData(value);
+                } else {
+                    newObj[key] = value;
                 }
-                return newObj;
             }
-            return obj;
+            return newObj;
         };
 
         const finalData = serializeData({
@@ -138,7 +141,6 @@ export async function PATCH(
             return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
         }
 
-        // 권한 확인 (총관리자 또는 관리자만 가능)
         const userSnapshot = await db.collection('users').where('email', '==', requesterEmail).limit(1).get();
         if (userSnapshot.empty) {
             return NextResponse.json({ error: '사용자 정보를 찾을 수 없습니다.' }, { status: 403 });
@@ -156,14 +158,13 @@ export async function PATCH(
 
         const matchData = doc.data();
         const teamKey = team === 'blue' ? 'blueTeam' : 'redTeam';
-        const teamData = matchData?.[teamKey] || [];
+        const teamData: MatchPlayer[] = matchData?.[teamKey] || [];
 
-        const playerIndex = teamData.findIndex((p: { email: string }) => p.email === playerEmail);
+        const playerIndex = teamData.findIndex((p) => p.email === playerEmail);
         if (playerIndex === -1) {
             return NextResponse.json({ error: '해당 플레이어를 찾을 수 없습니다.' }, { status: 404 });
         }
 
-        // 해당 플레이어의 챔피언 정보만 업데이트
         teamData[playerIndex].champion = newChampion;
 
         await matchRef.update({ [teamKey]: teamData });
@@ -190,7 +191,6 @@ export async function DELETE(
             return NextResponse.json({ error: '필요한 정보가 누락되었습니다.' }, { status: 400 });
         }
 
-        // 오직 총관리자만 삭제 가능
         const hasPermission = await isSuperAdmin(requesterEmail);
         if (!hasPermission) {
             return NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 });
