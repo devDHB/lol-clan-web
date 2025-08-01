@@ -74,7 +74,7 @@ export async function GET() {
 // POST: 새로운 파티를 만드는 함수
 export async function POST(request: NextRequest) {
     try {
-        const { partyName, creatorEmail, partyType, requiredTier, startTime, playStyle } = await request.json();
+        const { partyName, creatorEmail, partyType, requiredTier, startTime, playStyle, maxMembers: customMaxMembers } = await request.json();
 
         if (!partyName || !creatorEmail || !partyType) {
             return NextResponse.json({ error: '파티 이름, 생성자 이메일, 파티 타입은 필수입니다.' }, { status: 400 });
@@ -87,7 +87,11 @@ export async function POST(request: NextRequest) {
         switch (partyType) {
             case '자유랭크': maxMembers = 5; break;
             case '솔로/듀오랭크': maxMembers = 2; break;
-            case '기타': maxMembers = 10; break;
+            case '기타':
+                // '기타' 타입일 경우, 인원 수를 받거나 기본값 10으로 설정
+                const parsedMax = parseInt(customMaxMembers, 10);
+                maxMembers = !isNaN(parsedMax) && parsedMax > 1 && parsedMax <= 20 ? parsedMax : 10;
+                break;
             default: return NextResponse.json({ error: '알 수 없는 파티 타입입니다.' }, { status: 400 });
         }
 
@@ -123,7 +127,7 @@ export async function PUT(request: NextRequest) {
         const { partyId, userData, action, memberEmailToKick, requesterEmail } = await request.json();
 
         const partyRef = db.collection('parties').doc(partyId);
-        
+
         let responseMessage = '파티 정보가 업데이트되었습니다.';
 
         await db.runTransaction(async (transaction) => {
@@ -161,14 +165,19 @@ export async function PUT(request: NextRequest) {
 
                     const requesterDoc = await db.collection('users').where('email', '==', requesterEmail).limit(1).get();
                     if (requesterDoc.empty) throw new Error('요청자 정보를 찾을 수 없습니다.');
-                    
+
                     const requesterRole = requesterDoc.docs[0].data().role;
                     const leaderEmail = members.length > 0 ? members[0].email : null;
 
-                    const canKick = requesterRole === '총관리자' || requesterRole === '관리자' || requesterEmail === leaderEmail;
+                    const isAdmin = requesterRole === '총관리자' || requesterRole === '관리자';
+                    const isLeader = requesterEmail === leaderEmail;
 
-                    if (!canKick) throw new Error('멤버를 제외할 권한이 없습니다.');
-                    if (memberEmailToKick === leaderEmail) throw new Error('파티장은 제외할 수 없습니다.');
+                    if (memberEmailToKick === leaderEmail && !isAdmin) {
+                        throw new Error('파티장은 관리자만 제외할 수 있습니다.');
+                    }
+                    if (!isAdmin && !isLeader) {
+                        throw new Error('멤버를 제외할 권한이 없습니다.');
+                    }
 
                     members = members.filter(m => m.email !== memberEmailToKick);
                     if (members.length < maxMembers && waiting.length > 0) {
@@ -177,6 +186,20 @@ export async function PUT(request: NextRequest) {
                     }
                     responseMessage = '멤버가 성공적으로 제외되었습니다.';
                     break;
+                }
+                case 'kick_waiter': {
+                    if (!requesterEmail || !memberEmailToKick) throw new Error('필요한 정보가 누락되었습니다.');
+                    const requesterDoc = await db.collection('users').where('email', '==', requesterEmail).limit(1).get();
+                    if (requesterDoc.empty) throw new Error('요청자 정보를 찾을 수 없습니다.');
+
+                    const requesterRole = requesterDoc.docs[0].data().role;
+                    const isAdmin = requesterRole === '총관리자' || requesterRole === '관리자';
+
+                    if (!isAdmin) throw new Error('대기 멤버를 제외할 권한이 없습니다.');
+
+                    waiting = waiting.filter(w => w.email !== memberEmailToKick);
+                    responseMessage = '대기 멤버가 성공적으로 제외되었습니다.';
+                    break; // ✅ [수정] break 문 추가
                 }
                 default:
                     throw new Error('알 수 없는 요청입니다.');
@@ -192,7 +215,7 @@ export async function PUT(request: NextRequest) {
                 });
             }
         });
-        
+
         return NextResponse.json({ message: responseMessage });
 
     } catch (error: unknown) {
@@ -244,12 +267,20 @@ export async function PATCH(request: NextRequest) {
             if (!hasEditPermission) {
                 return NextResponse.json({ error: '파티 정보를 수정할 권한이 없습니다.' }, { status: 403 });
             }
-            const { newPartyName, newRequiredTier, newStartTime, newPlayStyle } = body;
+            const { newPartyName, newRequiredTier, newStartTime, newPlayStyle, newMaxMembers } = body;
             const updates: { [key: string]: any } = {};
             if (newPartyName !== undefined) updates.partyName = newPartyName;
             if (newRequiredTier !== undefined) updates.requiredTier = newRequiredTier;
             if (newStartTime !== undefined) updates.startTime = (newStartTime && newStartTime.trim() !== '') ? newStartTime.trim() : null;
             if (newPlayStyle !== undefined) updates.playStyle = newPlayStyle;
+
+            // 최대 인원 수 업데이트 로직
+            if (newMaxMembers !== undefined && partyData?.partyType === '기타') {
+                const parsedMax = parseInt(newMaxMembers, 10);
+                if (!isNaN(parsedMax) && parsedMax > 1 && parsedMax <= 20) {
+                    updates.maxMembers = parsedMax;
+                }
+            }
 
             if ((partyData?.partyType === '자유랭크' || partyData?.partyType === '솔로/듀오랭크') && (!newRequiredTier || newRequiredTier.trim() === '')) {
                 return NextResponse.json({ error: `${partyData?.partyType} 파티는 필수 티어가 필요합니다.` }, { status: 400 });
@@ -265,7 +296,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: '알 수 없는 요청입니다.' }, { status: 400 });
         }
         // 이 라인은 도달하지 않아야 하지만, TypeScript 에러 방지를 위해 추가
-        return NextResponse.json({ error: '처리되지 않은 요청입니다.' }, { status: 400 }); 
+        return NextResponse.json({ error: '처리되지 않은 요청입니다.' }, { status: 400 });
     } catch (error) {
         console.error('PATCH Party API Error:', error);
         return NextResponse.json({ error: '업데이트에 실패했습니다.' }, { status: 500 });

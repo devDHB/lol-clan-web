@@ -2,16 +2,15 @@
 
 import { useEffect, useState, Dispatch, SetStateAction, useCallback, Fragment } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import Link from 'next/link';
 import { Transition, Dialog } from '@headlessui/react';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import Link from 'next/link';
 
 // --- 타입 정의 ---
 interface Member {
     email: string;
     positions: string[];
 }
-
 interface Party {
     partyId: string;
     partyType: '자유랭크' | '솔로/듀오랭크' | '기타';
@@ -24,11 +23,9 @@ interface Party {
     startTime?: string | null;
     playStyle?: '즐겜' | '빡겜';
 }
-
 interface UserProfile {
     role: string;
 }
-
 interface UserMap {
     [email: string]: string;
 }
@@ -78,16 +75,17 @@ const handlePositionChange = (
 function CreatePartyModal({ isOpen, setIsOpen, handleCreateParty, initialPartyType }: {
     isOpen: boolean;
     setIsOpen: Dispatch<SetStateAction<boolean>>;
-    handleCreateParty: (partyType: '자유랭크' | '솔로/듀오랭크' | '기타', name: string, tier: string, style: '즐겜' | '빡겜', time: string) => void;
+    handleCreateParty: (partyType: '자유랭크' | '솔로/듀오랭크' | '기타', name: string, tier: string, style: '즐겜' | '빡겜', time: string, maxMembers: number) => void;
     initialPartyType: '자유랭크' | '솔로/듀오랭크' | '기타';
 }) {
     const [partyName, setPartyName] = useState('');
     const [requiredTier, setRequiredTier] = useState('');
     const [playStyle, setPlayStyle] = useState<'즐겜' | '빡겜'>('즐겜');
     const [startTime, setStartTime] = useState('');
+    const [maxMembers, setMaxMembers] = useState(10);
 
     const handleSubmit = () => {
-        handleCreateParty(initialPartyType, partyName, requiredTier, playStyle, startTime);
+        handleCreateParty(initialPartyType, partyName, requiredTier, playStyle, startTime, maxMembers);
         setIsOpen(false);
     };
 
@@ -97,6 +95,7 @@ function CreatePartyModal({ isOpen, setIsOpen, handleCreateParty, initialPartyTy
             setRequiredTier('');
             setPlayStyle('즐겜');
             setStartTime('');
+            setMaxMembers(10);
         }
     }, [isOpen]);
 
@@ -110,14 +109,17 @@ function CreatePartyModal({ isOpen, setIsOpen, handleCreateParty, initialPartyTy
                     <div className="flex min-h-full items-center justify-center p-4 text-center">
                         <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
                             <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gray-800 p-6 text-left align-middle shadow-xl transition-all border border-gray-700">
-                                <Dialog.Title as="h3" className="text-2xl font-bold leading-6 text-yellow-400 mb-4">
-                                    {initialPartyType} 파티 만들기
-                                </Dialog.Title>
+                                <Dialog.Title as="h3" className="text-2xl font-bold leading-6 text-yellow-400 mb-4">{initialPartyType} 파티 만들기</Dialog.Title>
                                 <div className="mt-4 space-y-4">
-                                    <input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} placeholder="파티 이름" className="w-full px-3 py-2 bg-gray-700 text-gray-200 placeholder-gray-400 rounded-md border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                                    {initialPartyType !== '기타' && (
+                                    <input type="text" value={partyName} onChange={(e) => setPartyName(e.target.value)} placeholder="파티 이름" className="w-full px-3 py-2 bg-gray-700 rounded-md" />
+                                    {initialPartyType === '기타' ? (
+                                        <div>
+                                            <label className="text-sm font-medium text-gray-300">인원 수 (최대 20인)</label>
+                                            <input type="number" value={maxMembers} onChange={(e) => setMaxMembers(parseInt(e.target.value, 10))} className="w-full mt-2 px-3 py-2 bg-gray-700 rounded-md" min="2" max="20" />
+                                        </div>
+                                    ) : (
                                         <>
-                                            <input type="text" value={requiredTier} onChange={(e) => setRequiredTier(e.target.value)} placeholder="필요 티어 (예: 플래 이상)" className="w-full px-3 py-2 bg-gray-700 text-gray-200 placeholder-gray-400 rounded-md border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                                            <input type="text" value={requiredTier} onChange={(e) => setRequiredTier(e.target.value)} placeholder="필요 티어" className="w-full px-3 py-2 bg-gray-700 rounded-md" />
                                             <div>
                                                 <label className="text-sm font-medium text-gray-300">유형</label>
                                                 <div className="mt-2 flex gap-2">
@@ -127,7 +129,7 @@ function CreatePartyModal({ isOpen, setIsOpen, handleCreateParty, initialPartyTy
                                             </div>
                                         </>
                                     )}
-                                    <input type="text" value={startTime} onChange={(e) => setStartTime(e.target.value)} placeholder="시작 시간 (예: 20시, 지금)" className="w-full px-3 py-2 bg-gray-700 text-gray-200 placeholder-gray-400 rounded-md border border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                                    <input type="text" value={startTime} onChange={(e) => setStartTime(e.target.value)} placeholder="시작 시간" className="w-full px-3 py-2 bg-gray-700 rounded-md" />
                                 </div>
                                 <div className="mt-6 flex justify-end gap-4">
                                     <button type="button" onClick={() => setIsOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-300 bg-gray-600 rounded-md hover:bg-gray-500">취소</button>
@@ -143,7 +145,7 @@ function CreatePartyModal({ isOpen, setIsOpen, handleCreateParty, initialPartyTy
 }
 
 // 파티 카드
-function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpdateParty, handleDisbandParty, handleKickMember }: {
+function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpdateParty, handleDisbandParty, handleKickMember, handleKickWaiter }: {
     party: Party;
     user: any;
     userMap: UserMap;
@@ -152,16 +154,18 @@ function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpd
     handleUpdateParty: (partyId: string, action: 'update_details' | 'update_positions', data: any) => void;
     handleDisbandParty: (partyId: string) => void;
     handleKickMember: (partyId: string, memberEmail: string, memberNickname: string) => void;
+    handleKickWaiter: (partyId: string, memberEmail: string, memberNickname: string) => void;
 }) {
-    const [selectedPositions, setSelectedPositions] = useState<string[]>([]); // ✅ [수정] 기본값을 빈 배열로 변경
+    const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
     const [editingPartyId, setEditingPartyId] = useState<string | null>(null);
     const [editingPartyName, setEditingPartyName] = useState('');
     const [editingRequiredTier, setEditingRequiredTier] = useState('');
     const [editingStartTime, setEditingStartTime] = useState('');
     const [editingPlayStyle, setEditingPlayStyle] = useState<'즐겜' | '빡겜'>('즐겜');
+    const [editingMaxMembers, setEditingMaxMembers] = useState(10);
     const [editingMemberEmail, setEditingMemberEmail] = useState<string | null>(null);
     const [editingPositions, setEditingPositions] = useState<string[]>([]);
-    
+
     const members = party.membersData as Member[];
     const waiting = party.waitingData as Member[];
     const leader = members[0];
@@ -184,13 +188,15 @@ function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpd
                         {party.requiredTier && <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${requiredTierStyles.bg} ${requiredTierStyles.text} ${requiredTierStyles.border}`}>{party.requiredTier}</span>}
                         {party.playStyle && <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${playStyleStyles[party.playStyle].bg} ${playStyleStyles[party.playStyle].text} ${playStyleStyles[party.playStyle].border}`}>{party.playStyle}</span>}
                     </div>
-                    <span className="text-sm text-gray-400 flex-shrink-0">⏰ {party.startTime || '즉시 시작'}</span>
+                    <span className="text-sm text-gray-400 flex-shrink-0">⏰ {party.startTime || '미정'}</span>
                 </div>
-                
+
                 {editingPartyId === party.partyId ? (
                     <div className="space-y-2 mb-2 p-3 bg-gray-700 rounded-md">
                         <input type="text" value={editingPartyName} onChange={(e) => setEditingPartyName(e.target.value)} className="w-full px-2 py-1 bg-gray-600 rounded-md" placeholder="파티 이름" />
-                        {(party.partyType === '자유랭크' || party.partyType === '솔로/듀오랭크') && (
+                        {party.partyType === '기타' ? (
+                            <input type="number" value={editingMaxMembers} onChange={(e) => setEditingMaxMembers(parseInt(e.target.value, 10))} className="w-full px-2 py-1 bg-gray-600 rounded-md mt-2" placeholder="최대 인원" min="2" max="20" />
+                        ) : (
                             <>
                                 <input type="text" value={editingRequiredTier} onChange={(e) => setEditingRequiredTier(e.target.value)} className="w-full px-2 py-1 bg-gray-600 rounded-md mt-2" placeholder="필요 티어" />
                                 <div className="mt-2 flex gap-2">
@@ -201,19 +207,19 @@ function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpd
                         )}
                         <input type="text" value={editingStartTime} onChange={(e) => setEditingStartTime(e.target.value)} className="w-full px-2 py-1 bg-gray-600 rounded-md mt-2" placeholder="시작 시간" />
                         <div className="flex gap-2 mt-3">
-                            <button onClick={() => { handleUpdateParty(party.partyId, 'update_details', { newPartyName: editingPartyName, newRequiredTier: editingRequiredTier, newStartTime: editingStartTime, newPlayStyle: editingPlayStyle }); setEditingPartyId(null); }} className="bg-green-600 px-3 py-1 rounded-md text-sm">저장</button>
+                            <button onClick={() => { handleUpdateParty(party.partyId, 'update_details', { newPartyName: editingPartyName, newRequiredTier: editingRequiredTier, newStartTime: editingStartTime, newPlayStyle: editingPlayStyle, newMaxMembers: editingMaxMembers }); setEditingPartyId(null); }} className="bg-green-600 px-3 py-1 rounded-md text-sm">저장</button>
                             <button onClick={() => setEditingPartyId(null)} className="bg-gray-600 px-3 py-1 rounded-md text-sm">취소</button>
                         </div>
                     </div>
                 ) : (
                     <div className="flex justify-between items-start mb-2">
                         <h2 className="text-2xl font-bold text-yellow-400 truncate pr-2">{party.partyName}</h2>
-                        {canModifyDetails && (<button onClick={() => { setEditingPartyId(party.partyId); setEditingPartyName(party.partyName); setEditingRequiredTier(party.requiredTier || ''); setEditingStartTime(party.startTime || ''); setEditingPlayStyle(party.playStyle || '즐겜'); }} className="text-xs bg-gray-600 px-2 py-1 rounded-md flex-shrink-0">수정</button>)}
+                        {canModifyDetails && (<button onClick={() => { setEditingPartyId(party.partyId); setEditingPartyName(party.partyName); setEditingRequiredTier(party.requiredTier || ''); setEditingStartTime(party.startTime || ''); setEditingPlayStyle(party.playStyle || '즐겜'); setEditingMaxMembers(party.maxMembers); }} className="text-xs bg-gray-600 px-2 py-1 rounded-md flex-shrink-0">수정</button>)}
                     </div>
                 )}
 
                 <p className="text-sm text-gray-400 mb-4">파티장: {userMap[leader.email] || leader.email.split('@')[0]}</p>
-                
+
                 <h3 className="font-semibold mb-2 text-gray-300">참가 멤버 ({members.length} / {party.maxMembers})</h3>
                 <div className="space-y-2 mb-4">
                     {members.map((member) => (
@@ -229,7 +235,7 @@ function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpd
                                     <div className="flex items-center gap-1">
                                         {party.partyType !== '기타' && member.positions.map(pos => (<span key={pos} className="bg-blue-500 px-2 py-0.5 text-xs rounded-full">{pos}</span>))}
                                         {user?.email === member.email && party.partyType !== '기타' && (<button onClick={() => { setEditingMemberEmail(member.email); setEditingPositions(member.positions); }} className="bg-gray-600 text-xs px-2 py-1 rounded ml-1">수정</button>)}
-                                        {canKick && user?.email !== member.email && member.email !== leader.email && (
+                                        {canKick && user?.email !== member.email && (member.email !== leader.email || isAdmin) && (
                                             <button onClick={() => handleKickMember(party.partyId, member.email, userMap[member.email])} className="bg-red-600 text-xs px-2 py-1 rounded ml-1">제외</button>
                                         )}
                                     </div>
@@ -238,20 +244,21 @@ function PartyCard({ party, user, userMap, profile, handlePartyAction, handleUpd
                         </li>
                     ))}
                 </div>
-                
+
                 <div className="mb-4">
                     <h3 className="font-semibold mb-2 text-gray-300">대기 멤버 ({waiting.length} / 5)</h3>
                     <div className="space-y-2 min-h-[50px]">
                         {waiting.map((member, index) => (
                             <div key={index} className="flex justify-between items-center text-sm p-2 bg-gray-700/30 rounded-md">
                                 <span>{userMap[member.email] || member.email}</span>
-                                {party.partyType !== '기타' && (
-                                    <div className="flex items-center gap-1">
-                                        {member.positions.map(pos => (
-                                            <span key={pos} className="bg-yellow-500/80 text-black text-xs px-2 py-0.5 rounded-full">{pos}</span>
-                                        ))}
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-1">
+                                    {party.partyType !== '기타' && member.positions.map(pos => (
+                                        <span key={pos} className="bg-yellow-500/80 text-black text-xs px-2 py-0.5 rounded-full">{pos}</span>
+                                    ))}
+                                    {isAdmin && (
+                                        <button onClick={() => handleKickWaiter(party.partyId, member.email, userMap[member.email])} className="bg-red-600 text-xs px-2 py-1 rounded ml-1">제외</button>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -338,7 +345,7 @@ export default function PartiesPage() {
         fetchData();
     }, [fetchData]);
 
-    const handleCreateParty = async (partyType: '자유랭크' | '솔로/듀오랭크' | '기타', name: string, tier: string, style: '즐겜' | '빡겜', time: string) => {
+    const handleCreateParty = async (partyType: '자유랭크' | '솔로/듀오랭크' | '기타', name: string, tier: string, style: '즐겜' | '빡겜', time: string, maxMembers: number) => {
         if (!name.trim() || !user || !user.email) {
             alert('파티 이름과 로그인 정보가 필요합니다.');
             return;
@@ -358,6 +365,7 @@ export default function PartiesPage() {
                     requiredTier: tier.trim(),
                     startTime: time.trim() || null,
                     playStyle: style,
+                    maxMembers: maxMembers,
                 }),
             });
             if (res.ok) {
@@ -371,9 +379,9 @@ export default function PartiesPage() {
         }
     };
 
-    const handlePartyAction = async (partyId: string, action: 'join' | 'leave' | 'join_waitlist' | 'leave_waitlist', positions: string[] = ['ALL']) => {
+    const handlePartyAction = async (partyId: string, action: 'join' | 'leave' | 'join_waitlist' | 'leave_waitlist', positions: string[] = []) => {
         if (!user || !user.email) return;
-        
+
         const party = parties.find(p => p.partyId === partyId);
         if ((action === 'join' || action === 'join_waitlist') && party?.partyType !== '기타' && positions.length === 0) {
             alert('하나 이상의 포지션을 선택해주세요.');
@@ -424,9 +432,35 @@ export default function PartiesPage() {
         }
     };
 
+    const handleKickWaiter = async (partyId: string, memberEmailToKick: string, memberNickname: string) => {
+        if (!user || !user.email) return;
+        if (confirm(`정말로 대기열의 '${memberNickname}'님을 제외하시겠습니까?`)) {
+            try {
+                const res = await fetch('/api/parties', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        partyId,
+                        action: 'kick_waiter',
+                        requesterEmail: user.email,
+                        memberEmailToKick,
+                    }),
+                });
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.error || '대기 멤버 제외 실패');
+                }
+                alert('대기 멤버가 제외되었습니다.');
+                fetchData();
+            } catch (error: unknown) {
+                if (error instanceof Error) alert(error.message);
+            }
+        }
+    };
+
     const handleUpdateParty = async (partyId: string, action: 'update_details' | 'update_positions', data: any) => {
         if (!user?.email) return;
-        
+
         const body = { partyId, userEmail: user.email, action, ...data };
 
         try {
@@ -486,9 +520,9 @@ export default function PartiesPage() {
                 </div>
 
                 {createMode && (
-                    <CreatePartyModal 
-                        isOpen={createMode !== null} 
-                        setIsOpen={() => setCreateMode(null)} 
+                    <CreatePartyModal
+                        isOpen={createMode !== null}
+                        setIsOpen={() => setCreateMode(null)}
                         handleCreateParty={handleCreateParty}
                         initialPartyType={createMode}
                     />
@@ -505,7 +539,7 @@ export default function PartiesPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredParties.length > 0 ? (
                         filteredParties.map((party) => (
-                            <PartyCard 
+                            <PartyCard
                                 key={party.partyId}
                                 party={party}
                                 user={user}
@@ -515,6 +549,7 @@ export default function PartiesPage() {
                                 handleUpdateParty={handleUpdateParty}
                                 handleDisbandParty={handleDisbandParty}
                                 handleKickMember={handleKickMember}
+                                handleKickWaiter={handleKickWaiter}
                             />
                         ))
                     ) : (

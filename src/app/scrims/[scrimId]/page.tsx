@@ -718,16 +718,16 @@ export default function ScrimDetailPage() {
                 // 이미 선택된 포지션을 클릭하면 제거
                 newPositions = prev.filter(p => p.name !== posName);
             } else {
-                // 3개 미만일 때만 새로 추가
-                if (prev.length < 3) {
+                // 4개 미만일 때만 새로 추가
+                if (prev.length < 4) {
                     // rank는 잠시 0으로 두고, 아래에서 순서대로 재할당
                     newPositions = [...prev, { name: posName, rank: 0 }];
                 } else {
-                    return prev; // 3개 꽉 찼으면 아무것도 안 함
+                    return prev; // 4개 꽉 찼으면 아무것도 안 함
                 }
             }
 
-            // 배열의 순서(index)에 따라 1, 2, 3 순위를 다시 매김
+            // 배열의 순서(index)에 따라 1, 2, 3, 4순위를 다시 매김
             return newPositions.map((p, index) => ({
                 ...p,
                 rank: index + 1
@@ -957,7 +957,7 @@ export default function ScrimDetailPage() {
 
                                             {/* --- 포지션 선택 UI --- */}
                                             <div>
-                                                <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
+                                                <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 4개, 순위 지정)</p>
                                                 <div className="flex flex-wrap gap-2 mb-4">
                                                     <button
                                                         onClick={() => handlePositionClick('ALL', true)}
@@ -970,7 +970,7 @@ export default function ScrimDetailPage() {
                                                         <button
                                                             key={pos}
                                                             onClick={() => handlePositionClick(pos, true)}
-                                                            disabled={waitlistSelectedPositions.some(p => p.name === 'ALL') || (waitlistSelectedPositions.length >= 3 && !waitlistSelectedPositions.some(p => p.name === pos))}
+                                                            disabled={waitlistSelectedPositions.some(p => p.name === 'ALL') || (waitlistSelectedPositions.length >= 4 && !waitlistSelectedPositions.some(p => p.name === pos))}
                                                             className={`px-3 py-1 text-sm rounded-full ${waitlistSelectedPositions.some(p => p.name === pos) ? 'bg-blue-500' : 'bg-gray-600 hover:bg-gray-500'} disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 active:scale-95`}
                                                         >
                                                             {pos}
@@ -1198,7 +1198,7 @@ export default function ScrimDetailPage() {
 
                                             {/* [수정된 부분] 포지션 선택 UI 전체 코드 */}
                                             <div>
-                                                <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
+                                                <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 4개, 순위 지정)</p>
                                                 <div className="flex flex-wrap gap-2 mb-4">
                                                     <button
                                                         onClick={() => handlePositionClick('ALL', true)}
@@ -1334,7 +1334,7 @@ export default function ScrimDetailPage() {
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 3개, 순위 지정)</p>
+                                                    <p className="text-sm font-medium text-gray-300 mb-2">희망 포지션 (ALL 또는 최대 4개, 순위 지정)</p>
                                                     <div className="flex flex-wrap gap-2 mb-4">
                                                         <button
                                                             onClick={() => handlePositionClick('ALL', false)} // ⭐️ isWaitlist: false 추가
@@ -1347,7 +1347,7 @@ export default function ScrimDetailPage() {
                                                             <button
                                                                 key={pos}
                                                                 onClick={() => handlePositionClick(pos, false)} // ⭐️ isWaitlist: false 추가
-                                                                disabled={selectedPositions.some(p => p.name === 'ALL') || (selectedPositions.length >= 3 && !selectedPositions.some(p => p.name === pos))}
+                                                                disabled={selectedPositions.some(p => p.name === 'ALL') || (selectedPositions.length >= 4 && !selectedPositions.some(p => p.name === pos))}
                                                                 className={`px-3 py-1 text-sm rounded-full ${selectedPositions.some(p => p.name === pos) ? 'bg-blue-500' : 'bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                                             >
                                                                 {pos}
